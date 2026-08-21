@@ -7,6 +7,7 @@ import net.minecraft.world.phys.Vec3;
 public final class RecoveryStateMachine {
     private Stage stage = Stage.IDLE;
     private BlockPos target;
+    private BridgeTechnique technique;
     private int stageTicks;
 
     public boolean active() {
@@ -21,9 +22,10 @@ public final class RecoveryStateMachine {
         return target;
     }
 
-    public boolean begin(BlockPos position) {
+    public boolean begin(BlockPos position, BridgeTechnique bridgeTechnique) {
         if (position == null || active()) return false;
         target = position.immutable();
+        technique = bridgeTechnique;
         stage = Stage.HOLD;
         stageTicks = 0;
         return true;
@@ -35,12 +37,12 @@ public final class RecoveryStateMachine {
         stageTicks++;
         return switch (stage) {
             case HOLD -> {
-                if (stageTicks >= 2) advance(Stage.REALIGN);
+                if (stageTicks >= holdTicks()) advance(Stage.REALIGN);
                 yield new Snapshot("RECOVERY HOLD", true, true, false, target);
             }
             case REALIGN -> {
-                if (player != null) alignView(player, target);
-                if (stageTicks >= 2) advance(Stage.RETRY);
+                if (player != null) alignView(player, target, complexTechnique());
+                if (stageTicks >= alignTicks()) advance(Stage.RETRY);
                 yield new Snapshot("RECOVERY ALIGN", true, true, false, target);
             }
             case RETRY -> {
@@ -49,8 +51,9 @@ public final class RecoveryStateMachine {
                 yield new Snapshot("RECOVERY RETRY", true, true, true, retryTarget);
             }
             case RESUME -> {
-                if (stageTicks >= 2) clear();
-                yield new Snapshot("RECOVERY RESUME", true, true, false, target);
+                BlockPos resumeTarget = target;
+                if (stageTicks >= resumeTicks()) clear();
+                yield new Snapshot("RECOVERY RESUME", true, true, false, resumeTarget);
             }
             case IDLE -> Snapshot.idle();
         };
@@ -69,7 +72,27 @@ public final class RecoveryStateMachine {
     public void clear() {
         stage = Stage.IDLE;
         target = null;
+        technique = null;
         stageTicks = 0;
+    }
+
+    private int holdTicks() {
+        return complexTechnique() ? 2 : 1;
+    }
+
+    private int alignTicks() {
+        return complexTechnique() ? 3 : 1;
+    }
+
+    private int resumeTicks() {
+        return complexTechnique() ? 2 : 1;
+    }
+
+    private boolean complexTechnique() {
+        return technique == BridgeTechnique.TELLY
+            || technique == BridgeTechnique.SPEED_TELLY
+            || technique == BridgeTechnique.ANDROMEDA
+            || technique == BridgeTechnique.BLINK_BRIDGE;
     }
 
     private void advance(Stage next) {
@@ -77,7 +100,7 @@ public final class RecoveryStateMachine {
         stageTicks = 0;
     }
 
-    private static void alignView(LocalPlayer player, BlockPos target) {
+    private static void alignView(LocalPlayer player, BlockPos target, boolean complex) {
         Vec3 eye = player.getEyePosition();
         double dx = target.getX() + 0.5D - eye.x;
         double dy = target.getY() + 0.5D - eye.y;
@@ -86,8 +109,10 @@ public final class RecoveryStateMachine {
 
         float targetYaw = (float) Math.toDegrees(Math.atan2(-dx, dz));
         float targetPitch = (float) -Math.toDegrees(Math.atan2(dy, Math.max(0.001D, horizontal)));
-        player.setYRot(approachAngle(player.getYRot(), targetYaw, 34.0F));
-        player.setXRot(approachLinear(player.getXRot(), targetPitch, 22.0F));
+        float yawStep = complex ? 38.0F : 28.0F;
+        float pitchStep = complex ? 26.0F : 18.0F;
+        player.setYRot(approachAngle(player.getYRot(), targetYaw, yawStep));
+        player.setXRot(approachLinear(player.getXRot(), targetPitch, pitchStep));
     }
 
     private static float approachAngle(float current, float target, float maxStep) {
