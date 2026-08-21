@@ -7,11 +7,14 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.EnumMap;
+import java.util.Map;
 import java.util.Properties;
 
 public final class BridgeConfig {
     private static final BridgeConfig INSTANCE = new BridgeConfig();
 
+    private final Map<BridgeTechnique, TechniqueTuning> tuning = new EnumMap<>(BridgeTechnique.class);
     private boolean loaded;
     private BridgeTechnique technique = BridgeTechnique.NINJA;
     private ControlMode controlMode = ControlMode.HOLD;
@@ -30,7 +33,11 @@ public final class BridgeConfig {
     private int hudX = 6;
     private int hudY = 6;
 
-    private BridgeConfig() {}
+    private BridgeConfig() {
+        for (BridgeTechnique value : BridgeTechnique.values()) {
+            tuning.put(value, TechniqueTuning.defaults());
+        }
+    }
 
     public static BridgeConfig get() {
         INSTANCE.ensureLoaded();
@@ -64,6 +71,17 @@ public final class BridgeConfig {
             maxConsecutiveFailures = clamp(parseInt(p.getProperty("maxConsecutiveFailures"), 3), 1, 8);
             hudX = Math.max(0, parseInt(p.getProperty("hudX"), 6));
             hudY = Math.max(0, parseInt(p.getProperty("hudY"), 6));
+
+            for (BridgeTechnique value : BridgeTechnique.values()) {
+                TechniqueTuning defaults = TechniqueTuning.defaults();
+                String prefix = "tuning." + value.name() + ".";
+                tuning.put(value, new TechniqueTuning(
+                    parseDouble(p.getProperty(prefix + "cycleScale"), defaults.cycleScale()),
+                    parseDouble(p.getProperty(prefix + "leadOffset"), defaults.leadOffset()),
+                    parseFloat(p.getProperty(prefix + "rotationScale"), defaults.rotationScale()),
+                    parseDouble(p.getProperty(prefix + "cadenceBias"), defaults.cadenceBias())
+                ));
+            }
         } catch (IOException ignored) {}
     }
 
@@ -86,11 +104,20 @@ public final class BridgeConfig {
         p.setProperty("hudX", Integer.toString(hudX));
         p.setProperty("hudY", Integer.toString(hudY));
 
+        for (BridgeTechnique value : BridgeTechnique.values()) {
+            TechniqueTuning valueTuning = tuning(value);
+            String prefix = "tuning." + value.name() + ".";
+            p.setProperty(prefix + "cycleScale", Double.toString(valueTuning.cycleScale()));
+            p.setProperty(prefix + "leadOffset", Double.toString(valueTuning.leadOffset()));
+            p.setProperty(prefix + "rotationScale", Float.toString(valueTuning.rotationScale()));
+            p.setProperty(prefix + "cadenceBias", Double.toString(valueTuning.cadenceBias()));
+        }
+
         Path file = configFile();
         try {
             Files.createDirectories(file.getParent());
             try (OutputStream output = Files.newOutputStream(file)) {
-                p.store(output, "QuickBridge 0.2.0");
+                p.store(output, "QuickBridge 0.3.0");
             }
         } catch (IOException ignored) {}
     }
@@ -101,6 +128,16 @@ public final class BridgeConfig {
 
     private static int parseInt(String value, int fallback) {
         try { return value == null ? fallback : Integer.parseInt(value); }
+        catch (NumberFormatException ignored) { return fallback; }
+    }
+
+    private static double parseDouble(String value, double fallback) {
+        try { return value == null ? fallback : Double.parseDouble(value); }
+        catch (NumberFormatException ignored) { return fallback; }
+    }
+
+    private static float parseFloat(String value, float fallback) {
+        try { return value == null ? fallback : Float.parseFloat(value); }
         catch (NumberFormatException ignored) { return fallback; }
     }
 
@@ -138,4 +175,42 @@ public final class BridgeConfig {
     public int maxConsecutiveFailures() { return maxConsecutiveFailures; }
     public int hudX() { return hudX; }
     public int hudY() { return hudY; }
+
+    public TechniqueTuning tuning(BridgeTechnique value) {
+        return tuning.getOrDefault(value, TechniqueTuning.defaults());
+    }
+
+    public void adjustCycleScale(BridgeTechnique value, double delta) {
+        TechniqueTuning current = tuning(value);
+        tuning.put(value, current.withCycleScale(round(current.cycleScale() + delta, 2)));
+        save();
+    }
+
+    public void adjustLeadOffset(BridgeTechnique value, double delta) {
+        TechniqueTuning current = tuning(value);
+        tuning.put(value, current.withLeadOffset(round(current.leadOffset() + delta, 2)));
+        save();
+    }
+
+    public void adjustRotationScale(BridgeTechnique value, float delta) {
+        TechniqueTuning current = tuning(value);
+        tuning.put(value, current.withRotationScale((float) round(current.rotationScale() + delta, 2)));
+        save();
+    }
+
+    public void adjustCadenceBias(BridgeTechnique value, double delta) {
+        TechniqueTuning current = tuning(value);
+        tuning.put(value, current.withCadenceBias(round(current.cadenceBias() + delta, 2)));
+        save();
+    }
+
+    public void resetTuning(BridgeTechnique value) {
+        tuning.put(value, TechniqueTuning.defaults());
+        save();
+    }
+
+    private static double round(double value, int digits) {
+        double scale = Math.pow(10.0D, digits);
+        return Math.round(value * scale) / scale;
+    }
 }
