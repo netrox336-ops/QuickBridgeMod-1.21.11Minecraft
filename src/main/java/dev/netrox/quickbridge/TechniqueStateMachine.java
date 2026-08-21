@@ -5,14 +5,12 @@ import net.minecraft.client.player.LocalPlayer;
 public final class TechniqueStateMachine {
     private double cycleProgress;
     private double placementAccumulator;
-    private int recoveryHoldTicks;
     private TechniquePhase previousPhase = TechniquePhase.IDLE;
     private Snapshot lastSnapshot = Snapshot.idle();
 
     public void reset() {
         cycleProgress = 0.0D;
         placementAccumulator = 0.0D;
-        recoveryHoldTicks = 0;
         previousPhase = TechniquePhase.IDLE;
         lastSnapshot = Snapshot.idle();
     }
@@ -25,8 +23,7 @@ public final class TechniqueStateMachine {
         int confirmedPlacements,
         int failedPlacements,
         double averageConfirmationTicks,
-        int confirmationBudget,
-        boolean recoveryTriggered
+        int confirmationBudget
     ) {
         AdaptiveCadence.Sample cadence = AdaptiveCadence.sample(
             player,
@@ -37,24 +34,6 @@ public final class TechniqueStateMachine {
             averageConfirmationTicks,
             confirmationBudget
         );
-
-        if (recoveryTriggered) recoveryHoldTicks = Math.max(recoveryHoldTicks, 2);
-        if (recoveryHoldTicks > 0) {
-            recoveryHoldTicks--;
-            previousPhase = TechniquePhase.RECOVERY;
-            lastSnapshot = new Snapshot(
-                TechniquePhase.RECOVERY,
-                false,
-                false,
-                0,
-                cadence.speed(),
-                cadence.cadenceFactor(),
-                cadence.reliability(),
-                cycleProgress,
-                true
-            );
-            return lastSnapshot;
-        }
 
         double effectiveCycle = Math.max(2.0D, technique.cycleTicks() * tuning.cycleScale());
         cycleProgress += cadence.cadenceFactor() / effectiveCycle;
@@ -79,8 +58,7 @@ public final class TechniqueStateMachine {
             cadence.speed(),
             cadence.cadenceFactor(),
             cadence.reliability(),
-            cycleProgress,
-            false
+            cycleProgress
         );
         return lastSnapshot;
     }
@@ -155,8 +133,7 @@ public final class TechniqueStateMachine {
         double horizontalSpeed,
         double cadenceFactor,
         double reliability,
-        double cycleProgress,
-        boolean pauseMovement
+        double cycleProgress
     ) {
         private static Snapshot idle() {
             return new Snapshot(
@@ -167,8 +144,7 @@ public final class TechniqueStateMachine {
                 0.0D,
                 1.0D,
                 1.0D,
-                0.0D,
-                false
+                0.0D
             );
         }
     }
