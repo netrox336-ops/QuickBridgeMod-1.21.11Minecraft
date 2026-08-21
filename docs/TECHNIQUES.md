@@ -1,49 +1,68 @@
-# QuickBridge — профили техник v0.2.0
+# QuickBridge — профили техник v0.3.0
 
-QuickBridge использует единый runtime engine, но каждая техника имеет собственный tuning-профиль. Это позволяет менять механику конкретного bridge без переписывания основного движка.
+QuickBridge использует единый world-aware runtime, но каждая техника имеет базовый профиль, state-machine поведение и отдельную пользовательскую калибровку.
 
-| Профиль | Статус | Movement | Rotation | Особенность v0.2 |
-| --- | --- | --- | --- | --- |
-| Ninja | stable | backward | none | world edge scan + sneak threshold |
-| Diagonal Ninja | stable | diagonal backward | none | отдельный placement lead |
-| Breezily | stable | alternating backward | oscillating backward | небольшой yaw oscillation |
-| Witchly | stable | alternating backward | oscillating backward | увеличенная амплитуда yaw |
-| God Bridge | stable | backward-right | backward | плавный разворот + jump cadence |
-| Jump God | experimental | backward-right | backward | ускоренный jump cycle |
-| Telly | experimental | forward | telly phases | run → jump → reverse-view placement |
-| Speed Telly | experimental | forward | telly phases | более короткий cycle и быстрый rotation |
-| Side Bridge | stable | side-right | side-right | world-direction side movement |
-| Time Bridge | experimental | backward | backward | отдельный cadence 2t |
-| Andromeda | experimental | backward-right | oscillating backward | быстрый rotation + multi-placement |
-| Blink Bridge | experimental | forward | telly phases | ранний placement-window + burst attempts |
-| Slope Bridging | stable | backward | backward | высокий edge threshold + jump cadence |
-| Moonwalk | experimental | alternating backward | oscillating backward | отдельная амплитуда oscillation |
+| Профиль | Статус | Movement | Runtime v0.3 |
+| --- | --- | --- | --- |
+| Ninja | stable | backward | cruise + world edge scan |
+| Diagonal Ninja | stable | diagonal backward | cruise + edge scan |
+| Breezily | stable | alternating backward | STRAFE L / STRAFE R |
+| Witchly | stable | alternating backward | STRAFE L / STRAFE R + yaw oscillation |
+| God Bridge | stable | backward-right | cruise + jump cadence |
+| Jump God | experimental | backward-right | fast jump cadence |
+| Telly | experimental | forward | RUNUP → JUMP → TURN → BURST → RESET |
+| Speed Telly | experimental | forward | ускоренный Telly state cycle |
+| Side Bridge | stable | side-right | world-direction side movement |
+| Time Bridge | experimental | backward | cadence 2t + adaptive correction |
+| Andromeda | experimental | backward-right | RUNUP → JUMP → TURN → BURST → RESET |
+| Blink Bridge | experimental | forward | короткий runup + длинный burst window |
+| Slope Bridging | stable | backward | cruise + jump cadence + edge scan |
+| Moonwalk | experimental | alternating backward | STRAFE L / STRAFE R |
 
-## Tuning-параметры
+## Technique State Machine
 
-Каждый `BridgeTechnique` задаёт:
+Сложные профили больше не определяют всё поведение только через `tick % cycle`. `TechniqueStateMachine` хранит нормализованный прогресс цикла и переводит его в фазу техники.
 
-- `movementStyle` — желаемое движение в мировых координатах;
-- `placeEveryTicks` — базовую частоту placement;
-- `jumpEveryTicks` — ритм прыжков для обычных профилей;
-- `extraPlacementAttempts` — дополнительные цели в одном placement window;
-- `rotationMode` — NONE / BACKWARD / OSCILLATING_BACKWARD / TELLY / SIDE_RIGHT;
-- `cycleTicks` — длину фазового цикла;
-- `placementStartTick` — начало placement-window для TELLY-профилей;
-- `placementLead` — расстояние упреждения цели относительно игрока;
-- `placementPitch` — целевой pitch камеры;
-- `rotationStep` — максимальный шаг плавного поворота за tick;
-- `edgeSneakThreshold` — дистанцию до отсутствующей опоры для Sneak Assist;
-- `oscillationDegrees` — амплитуду yaw-колебания.
+Для Telly / Speed Telly / Blink / Andromeda используются фазы:
 
-## Placement confirmation
+- `RUNUP` — разгон;
+- `JUMP` — импульс прыжка;
+- `TURN` — подготовка Rotation Engine;
+- `BURST` — placement window;
+- `RESET` — возвращение к следующему циклу.
 
-В v0.2 попытка `useItemOn` не считается автоматически успешным блоком. `BridgeEngine` сохраняет target в pending-очередь и ждёт, пока клиентский мир действительно перестанет считать эту позицию воздухом.
+Breezily / Witchly / Moonwalk используют `STRAFE L` и `STRAFE R`, поэтому movement pattern и yaw oscillation синхронизированы одним состоянием.
 
-Если блок не появился за `confirmationTicks`, движок может повторить placement до `maxRecoveryAttempts`. После исчерпания recovery target считается failed. Несколько последовательных failures могут вызвать Fail-stop.
+## Adaptive Cadence
+
+`AdaptiveCadence` учитывает:
+
+- фактическую горизонтальную скорость игрока;
+- число confirmed / failed placements;
+- среднее время появления подтвержденного блока в клиентском мире;
+- пользовательский `cadenceBias`.
+
+Результат — `cadenceFactor`. При хорошей скорости и стабильном подтверждении профиль может идти быстрее; при высокой задержке или failures движок автоматически снижает темп.
+
+## Per-Technique Tuning
+
+В v0.3 пользователь может отдельно для каждого профиля менять:
+
+- `cycleScale` — 70–140% базовой длины state-machine cycle;
+- `leadOffset` — ручную поправку точки placement;
+- `rotationScale` — 55–160% базовой скорости Rotation Engine;
+- `cadenceBias` — ручную поправку к Adaptive Cadence.
+
+Параметры сохраняются в `config/quickbridge.properties` с ключами `tuning.<TECHNIQUE>.*`.
+
+## Placement confirmation и Recovery Hold
+
+Попытка `useItemOn` считается успешной только после фактического появления блока в клиентском мире. Если блок не подтвержден за `confirmationTicks`, выполняется ограниченный recovery.
+
+Начиная с v0.3 при recovery state machine переходит в `RECOVERY`, QuickBridge кратко снимает движение и удерживает sneak. Это уменьшает риск продолжить движение по позиции, где сервер не подтвердил блок.
 
 ## World-direction movement
 
-Rotation Engine может повернуть камеру на 90°/180°, но движение вычисляется относительно исходного мирового вектора техники. Затем QuickBridge преобразует этот вектор обратно в W/A/S/D относительно текущего yaw. Благодаря этому разворот для placement не должен сам по себе менять траекторию игрока.
+Rotation Engine может повернуть камеру на 90°/180°, но движение рассчитывается относительно исходного мирового вектора техники и преобразуется обратно в W/A/S/D относительно текущего yaw. В v0.3 alternating movement получает направление strafe напрямую из state machine.
 
-`[EXP]` означает необходимость дальнейшей практической калибровки под конкретную серверную физику и задержку. Это не режим обхода античита.
+`[EXP]` означает необходимость дальнейшей практической калибровки под серверную физику и задержку. Это не режим обхода античита.

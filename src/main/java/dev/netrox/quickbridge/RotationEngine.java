@@ -16,12 +16,19 @@ public final class RotationEngine {
         captured = true;
     }
 
-    public static void tick(LocalPlayer player, BridgeTechnique technique, float startYaw, float startPitch, int ticks) {
+    public static void tick(
+        LocalPlayer player,
+        BridgeTechnique technique,
+        TechniqueTuning tuning,
+        TechniqueStateMachine.Snapshot state,
+        float startYaw,
+        float startPitch
+    ) {
         if (player == null || technique.rotationMode() == RotationMode.NONE) return;
 
         float desiredYaw = startYaw;
         float desiredPitch = startPitch;
-        int phase = technique.phaseTick(ticks);
+        TechniquePhase phase = state.phase();
 
         switch (technique.rotationMode()) {
             case BACKWARD -> {
@@ -29,14 +36,17 @@ public final class RotationEngine {
                 desiredPitch = technique.placementPitch();
             }
             case OSCILLATING_BACKWARD -> {
-                float side = phase < Math.max(1, technique.cycleTicks() / 2) ? -1.0F : 1.0F;
-                desiredYaw = startYaw + 180.0F + side * technique.oscillationDegrees();
+                desiredYaw = startYaw + 180.0F + state.strafeSign() * technique.oscillationDegrees();
                 desiredPitch = technique.placementPitch();
             }
             case TELLY -> {
-                if (technique.placementWindow(ticks)) {
+                if (phase == TechniquePhase.TURN
+                    || phase == TechniquePhase.BURST
+                    || phase == TechniquePhase.RECOVERY) {
                     desiredYaw = startYaw + 180.0F;
-                    desiredPitch = technique.placementPitch();
+                    desiredPitch = phase == TechniquePhase.RECOVERY
+                        ? Math.max(84.0F, technique.placementPitch())
+                        : technique.placementPitch();
                 } else {
                     desiredYaw = startYaw;
                     desiredPitch = Math.min(25.0F, Math.max(-10.0F, startPitch));
@@ -51,8 +61,9 @@ public final class RotationEngine {
             }
         }
 
-        player.setYRot(approachAngle(player.getYRot(), desiredYaw, technique.rotationStep()));
-        player.setXRot(approachLinear(player.getXRot(), desiredPitch, Math.max(4.0F, technique.rotationStep() * 0.72F)));
+        float rotationStep = Math.max(4.0F, technique.rotationStep() * tuning.rotationScale());
+        player.setYRot(approachAngle(player.getYRot(), desiredYaw, rotationStep));
+        player.setXRot(approachLinear(player.getXRot(), desiredPitch, Math.max(4.0F, rotationStep * 0.72F)));
     }
 
     public static void restore(LocalPlayer player) {
