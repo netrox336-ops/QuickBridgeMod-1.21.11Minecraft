@@ -10,6 +10,7 @@ import java.util.List;
 
 public final class BridgeEngine {
     private static final List<PendingPlacement> PENDING = new ArrayList<>();
+    private static final TechniqueStateMachine STATE_MACHINE = new TechniqueStateMachine();
 
     private static boolean active;
     private static int ticks;
@@ -18,6 +19,8 @@ public final class BridgeEngine {
     private static int failedPlacements;
     private static int recoveryAttempts;
     private static int consecutiveFailures;
+    private static long confirmationAgeTotal;
+    private static int confirmationAgeSamples;
     private static int originalSlot = -1;
     private static float startYaw;
     private static float startPitch;
@@ -36,6 +39,14 @@ public final class BridgeEngine {
     public static double edgeDistance() { return edgeDistance; }
     public static String phase() { return phase; }
     public static String lastStopReason() { return lastStopReason; }
+    public static double horizontalSpeed() { return STATE_MACHINE.lastSnapshot().horizontalSpeed(); }
+    public static double cadenceFactor() { return STATE_MACHINE.lastSnapshot().cadenceFactor(); }
+    public static double placementReliability() { return STATE_MACHINE.lastSnapshot().reliability(); }
+    public static double cycleProgress() { return STATE_MACHINE.lastSnapshot().cycleProgress(); }
+
+    public static double averageConfirmationTicks() {
+        return confirmationAgeSamples == 0 ? 0.0D : confirmationAgeTotal / (double) confirmationAgeSamples;
+    }
 
     public static void start(Minecraft minecraft) {
         if (active || minecraft.player == null) return;
@@ -47,8 +58,11 @@ public final class BridgeEngine {
         failedPlacements = 0;
         recoveryAttempts = 0;
         consecutiveFailures = 0;
+        confirmationAgeTotal = 0L;
+        confirmationAgeSamples = 0;
         edgeDistance = 0.90D;
         PENDING.clear();
+        STATE_MACHINE.reset();
         originalSlot = player.getInventory().getSelectedSlot();
         startYaw = player.getYRot();
         startPitch = player.getXRot();
@@ -75,6 +89,7 @@ public final class BridgeEngine {
         }
 
         RotationEngine.clear();
+        STATE_MACHINE.reset();
         PENDING.clear();
         originalSlot = -1;
         phase = "OFF";
@@ -101,14 +116,34 @@ public final class BridgeEngine {
             return;
         }
 
-        boolean recovering = updatePending(minecraft, config);
+        boolean recoveryTriggered = updatePending(minecraft, config);
         if (!active) return;
 
         ticks++;
         BridgeTechnique technique = config.technique();
-        double[] move = movementVector(technique.movementStyle(), startYaw, ticks);
+        TechniqueTuning tuning = config.tuning(technique);
+        TechniqueStateMachine.Snapshot state = STATE_MACHINE.tick(
+            player,
+            technique,
+            tuning,
+            ticks,
+            confirmedPlacements,
+            failedPlacements,
+            averageConfirmationTicks(),
+            config.confirmationTicks(),
+            recoveryTriggered
+        );
 
-        RotationEngine.tick(player, technique, startYaw, startPitch, ticks);
+        double[] move = movementVector(technique.movementStyle(), startYaw, state.strafeSign());
+        RotationEngine.tick(player, technique, tuning, state, startYaw, startPitch);
+
+        if (state.pauseMovement()) {
+            releaseMovement(minecraft);
+            minecraft.options.keyShift.setDown(true);
+            phase = TechniquePhase.RECOVERY.displayName();
+            return;
+        }
+
         applyWorldMovement(minecraft, player, technique, move);
 
         EdgeDetector.EdgeState edge = EdgeDetector.inspect(
@@ -124,18 +159,18 @@ public final class BridgeEngine {
             minecraft.options.keyShift.setDown(true);
         }
 
-        if (technique.shouldJump(ticks)) {
+        if (state.jumpPulse()) {
             minecraft.options.keyJump.setDown(true);
         }
 
-        if (recovering) phase = "RECOVERY";
-        else if (edge.shouldSneak()) phase = "EDGE";
-        else phase = technique.placementWindow(ticks) ? "PLACE" : "RUN";
+        phase = edge.shouldSneak() && state.phase() == TechniquePhase.CRUISE
+            ? "EDGE"
+            : state.phase().displayName();
 
-        if (technique.shouldPlace(ticks)) {
+        if (state.placeNow()) {
             int attempts = 1 + technique.extraPlacementAttempts();
             for (int i = 0; i < attempts; i++) {
-                PlacementHelper.PlacementAttempt attempt = placeNext(minecraft, technique, move, i);
+                PlacementHelper.PlacementAttempt attempt = placeNext(minecraft, technique, tuning, state, move, i);
                 if (attempt == null) continue;
                 placementAttempts++;
                 trackPending(attempt.target());
@@ -144,13 +179,15 @@ public final class BridgeEngine {
     }
 
     private static boolean updatePending(Minecraft minecraft, BridgeConfig config) {
-        boolean recoveredThisTick = false;
+        boolean recoveryTriggered = false;
         Iterator<PendingPlacement> iterator = PENDING.iterator();
 
         while (iterator.hasNext()) {
             PendingPlacement pending = iterator.next();
             if (PlacementHelper.isPlaced(minecraft, pending.target)) {
                 confirmedPlacements++;
+                confirmationAgeTotal += pending.age;
+                confirmationAgeSamples++;
                 consecutiveFailures = 0;
                 iterator.remove();
                 continue;
@@ -166,7 +203,7 @@ public final class BridgeEngine {
                 if (retry != null) {
                     placementAttempts++;
                     recoveryAttempts++;
-                    recoveredThisTick = true;
+                    recoveryTriggered = true;
                 }
                 continue;
             }
@@ -179,7 +216,7 @@ public final class BridgeEngine {
         if (config.stopOnPlacementFailures() && consecutiveFailures >= config.maxConsecutiveFailures()) {
             stopInternal(minecraft, "PLACEMENT FAIL");
         }
-        return recoveredThisTick;
+        return recoveryTriggered;
     }
 
     private static void trackPending(BlockPos target) {
@@ -192,14 +229,20 @@ public final class BridgeEngine {
     private static PlacementHelper.PlacementAttempt placeNext(
         Minecraft minecraft,
         BridgeTechnique technique,
+        TechniqueTuning tuning,
+        TechniqueStateMachine.Snapshot state,
         double[] move,
         int extraIndex
     ) {
         LocalPlayer player = minecraft.player;
         if (player == null) return null;
 
-        double distance = technique.placementLead() + extraIndex * 0.50D;
-        int y = (int)Math.floor(player.getY() - 1.0D);
+        double adaptiveLead = Math.min(0.14D, state.horizontalSpeed() * 0.35D);
+        double distance = Math.max(
+            0.18D,
+            technique.placementLead() + tuning.leadOffset() + adaptiveLead + extraIndex * 0.50D
+        );
+        int y = (int) Math.floor(player.getY() - 1.0D);
 
         BlockPos[] candidates = new BlockPos[] {
             BlockPos.containing(player.getX() + move[0] * distance, y, player.getZ() + move[1] * distance),
@@ -251,7 +294,7 @@ public final class BridgeEngine {
         }
     }
 
-    private static double[] movementVector(MovementStyle style, float yaw, int tick) {
+    private static double[] movementVector(MovementStyle style, float yaw, int strafeSign) {
         double rad = Math.toRadians(yaw);
         double forwardX = -Math.sin(rad);
         double forwardZ = Math.cos(rad);
@@ -266,7 +309,7 @@ public final class BridgeEngine {
             case SIDE_LEFT -> { x = -rightX; z = -rightZ; }
             case BACKWARD_RIGHT -> { x = -forwardX + rightX * 0.65D; z = -forwardZ + rightZ * 0.65D; }
             case BACKWARD_ALTERNATE -> {
-                double side = ((tick / 3) & 1) == 0 ? -0.6D : 0.6D;
+                double side = strafeSign * 0.6D;
                 x = -forwardX + rightX * side;
                 z = -forwardZ + rightZ * side;
             }
