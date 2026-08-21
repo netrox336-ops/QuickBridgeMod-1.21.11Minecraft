@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.3.0 — 2026-08-21
+
+Третья версия QuickBridge переводит сложные техники на адаптивные state machines.
+
+### Добавлено
+- Technique State Machine для фазового исполнения сложных техник;
+- отдельные фазы RUNUP / JUMP / TURN / BURST / RESET для Telly, Speed Telly, Blink и Andromeda;
+- отдельные STRAFE L / STRAFE R фазы для Breezily, Witchly и Moonwalk;
+- Adaptive Cadence по горизонтальной скорости, reliability placements и задержке server ACK;
+- автоматическое замедление cadence при нестабильных подтверждениях;
+- Recovery Hold с временной остановкой движения и sneak во время повторной установки;
+- учет фактической скорости игрока в placement lead;
+- per-technique tuning: cycle scale, lead offset, rotation scale, cadence bias;
+- отдельный экран калибровки выбранной техники;
+- сохранение индивидуальной калибровки каждого профиля в конфиг;
+- HUD-метрики Speed / Cadence / ACK latency / Reliability.
+
+### Изменено
+- Rotation Engine теперь получает текущую фазу state machine;
+- world-direction movement для alternating-профилей синхронизирован со strafe-фазой;
+- recovery больше не продолжает движение в момент повторной установки;
+- диагностический HUD расширен для анализа реального поведения техники на сервере.
+
 ## 0.2.0 — 2026-08-21
 
 Вторая версия QuickBridge с переработанным runtime движком.
