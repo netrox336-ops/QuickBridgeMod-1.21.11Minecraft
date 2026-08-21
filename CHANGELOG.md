@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.4.0 — 2026-08-22
+
+Четвёртая версия QuickBridge добавляет постоянное обучение профилей по конкретным серверам и отдельную recovery state machine.
+
+### Добавлено
+- Server Learning с отдельной статистикой для каждой пары сервер + техника;
+- локальное хранение learning-профилей в `config/quickbridge-learning.properties`;
+- накопление samples, success/failure, recovery success и ACK EMA;
+- learned-corrections для cycle scale, placement lead, rotation scale и cadence bias;
+- confidence, который ограничивает силу learned-поправок до накопления достаточной статистики;
+- отдельный Recovery State Machine: HOLD → REALIGN → RETRY → RESUME;
+- усиленный realign/recovery для Telly, Speed Telly, Andromeda и Blink;
+- отдельный экран статистики текущего сервера;
+- независимый сброс обучения выбранной техники или всего текущего сервера;
+- Learning HUD с persistent reliability/confidence;
+- отображение manual / learned / effective параметров в редакторе техники.
+
+### Изменено
+- ручная калибровка больше не изменяется автообучением: learned-слой накладывается отдельно;
+- Technique State Machine больше не содержит собственную recovery-заглушку;
+- placement recovery полностью управляется отдельной state machine;
+- learning data автоматически сохраняется при остановке движка;
+- главное меню переработано под Auto Learning и статистику сервера.
+
 ## 0.3.0 — 2026-08-21
 
 Третья версия QuickBridge переводит сложные техники на адаптивные state machines.

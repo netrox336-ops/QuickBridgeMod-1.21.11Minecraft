@@ -11,6 +11,7 @@ import java.util.List;
 public final class BridgeEngine {
     private static final List<PendingPlacement> PENDING = new ArrayList<>();
     private static final TechniqueStateMachine STATE_MACHINE = new TechniqueStateMachine();
+    private static final RecoveryStateMachine RECOVERY = new RecoveryStateMachine();
 
     private static boolean active;
     private static int ticks;
@@ -27,6 +28,8 @@ public final class BridgeEngine {
     private static double edgeDistance = 0.90D;
     private static String phase = "OFF";
     private static String lastStopReason = "-";
+    private static String currentServerId = "unknown";
+    private static String currentServerLabel = "Unknown";
 
     private BridgeEngine() {}
 
@@ -43,9 +46,14 @@ public final class BridgeEngine {
     public static double cadenceFactor() { return STATE_MACHINE.lastSnapshot().cadenceFactor(); }
     public static double placementReliability() { return STATE_MACHINE.lastSnapshot().reliability(); }
     public static double cycleProgress() { return STATE_MACHINE.lastSnapshot().cycleProgress(); }
+    public static String serverLabel() { return currentServerLabel; }
 
     public static double averageConfirmationTicks() {
         return confirmationAgeSamples == 0 ? 0.0D : confirmationAgeTotal / (double) confirmationAgeSamples;
+    }
+
+    public static LearningProfile learningProfile() {
+        return LearningEngine.profile(currentServerId, BridgeConfig.get().technique());
     }
 
     public static void start(Minecraft minecraft) {
@@ -63,9 +71,12 @@ public final class BridgeEngine {
         edgeDistance = 0.90D;
         PENDING.clear();
         STATE_MACHINE.reset();
+        RECOVERY.clear();
         originalSlot = player.getInventory().getSelectedSlot();
         startYaw = player.getYRot();
         startPitch = player.getXRot();
+        currentServerId = ServerContext.id(minecraft);
+        currentServerLabel = ServerContext.label(minecraft);
         phase = "RUN";
         lastStopReason = "-";
         RotationEngine.begin(player);
@@ -90,7 +101,9 @@ public final class BridgeEngine {
 
         RotationEngine.clear();
         STATE_MACHINE.reset();
+        RECOVERY.clear();
         PENDING.clear();
+        LearningEngine.flush();
         originalSlot = -1;
         phase = "OFF";
         lastStopReason = reason;
@@ -116,12 +129,28 @@ public final class BridgeEngine {
             return;
         }
 
-        boolean recoveryTriggered = updatePending(minecraft, config);
+        BridgeTechnique technique = config.technique();
+        updatePending(minecraft, config, technique);
         if (!active) return;
 
+        RecoveryStateMachine.Snapshot recovery = RECOVERY.tick(player);
+        if (recovery.retryNow() && recovery.target() != null) {
+            PlacementHelper.PlacementAttempt retry = PlacementHelper.tryPlace(minecraft, recovery.target());
+            resetPendingAge(recovery.target());
+            if (retry != null) {
+                placementAttempts++;
+                recoveryAttempts++;
+            }
+        }
+        if (recovery.pauseMovement()) {
+            releaseMovement(minecraft);
+            if (recovery.forceSneak()) minecraft.options.keyShift.setDown(true);
+            phase = recovery.phase();
+            return;
+        }
+
         ticks++;
-        BridgeTechnique technique = config.technique();
-        TechniqueTuning tuning = config.tuning(technique);
+        TechniqueTuning tuning = LearningEngine.effectiveTuning(config, currentServerId, technique);
         TechniqueStateMachine.Snapshot state = STATE_MACHINE.tick(
             player,
             technique,
@@ -130,20 +159,11 @@ public final class BridgeEngine {
             confirmedPlacements,
             failedPlacements,
             averageConfirmationTicks(),
-            config.confirmationTicks(),
-            recoveryTriggered
+            config.confirmationTicks()
         );
 
         double[] move = movementVector(technique.movementStyle(), startYaw, state.strafeSign());
         RotationEngine.tick(player, technique, tuning, state, startYaw, startPitch);
-
-        if (state.pauseMovement()) {
-            releaseMovement(minecraft);
-            minecraft.options.keyShift.setDown(true);
-            phase = TechniquePhase.RECOVERY.displayName();
-            return;
-        }
-
         applyWorldMovement(minecraft, player, technique, move);
 
         EdgeDetector.EdgeState edge = EdgeDetector.inspect(
@@ -178,8 +198,7 @@ public final class BridgeEngine {
         }
     }
 
-    private static boolean updatePending(Minecraft minecraft, BridgeConfig config) {
-        boolean recoveryTriggered = false;
+    private static void updatePending(Minecraft minecraft, BridgeConfig config, BridgeTechnique technique) {
         Iterator<PendingPlacement> iterator = PENDING.iterator();
 
         while (iterator.hasNext()) {
@@ -189,6 +208,16 @@ public final class BridgeEngine {
                 confirmationAgeTotal += pending.age;
                 confirmationAgeSamples++;
                 consecutiveFailures = 0;
+                boolean recovered = pending.retries > 0;
+                LearningEngine.recordSuccess(
+                    currentServerId,
+                    technique,
+                    pending.age,
+                    config.confirmationTicks(),
+                    recovered,
+                    config.autoLearning()
+                );
+                RECOVERY.confirmed(pending.target);
                 iterator.remove();
                 continue;
             }
@@ -196,27 +225,38 @@ public final class BridgeEngine {
             pending.age++;
             if (pending.age < config.confirmationTicks()) continue;
 
+            if (RECOVERY.activeFor(pending.target)) continue;
+
             if (config.placementRecovery() && pending.retries < config.maxRecoveryAttempts()) {
-                PlacementHelper.PlacementAttempt retry = PlacementHelper.tryPlace(minecraft, pending.target);
-                pending.retries++;
-                pending.age = 0;
-                if (retry != null) {
-                    placementAttempts++;
-                    recoveryAttempts++;
-                    recoveryTriggered = true;
+                if (!RECOVERY.active()) {
+                    pending.retries++;
+                    pending.age = 0;
+                    RECOVERY.begin(pending.target);
                 }
                 continue;
             }
 
+            if (RECOVERY.active()) continue;
+
             failedPlacements++;
             consecutiveFailures++;
+            LearningEngine.recordFailure(currentServerId, technique, config.autoLearning());
+            RECOVERY.cancel(pending.target);
             iterator.remove();
         }
 
         if (config.stopOnPlacementFailures() && consecutiveFailures >= config.maxConsecutiveFailures()) {
             stopInternal(minecraft, "PLACEMENT FAIL");
         }
-        return recoveryTriggered;
+    }
+
+    private static void resetPendingAge(BlockPos target) {
+        for (PendingPlacement pending : PENDING) {
+            if (pending.target.equals(target)) {
+                pending.age = 0;
+                return;
+            }
+        }
     }
 
     private static void trackPending(BlockPos target) {

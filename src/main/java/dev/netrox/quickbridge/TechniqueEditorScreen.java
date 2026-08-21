@@ -1,5 +1,6 @@
 package dev.netrox.quickbridge;
 
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.Screen;
@@ -19,7 +20,7 @@ public final class TechniqueEditorScreen extends Screen {
     protected void init() {
         BridgeConfig config = BridgeConfig.get();
         int center = width / 2;
-        int top = Math.max(34, height / 2 - 104);
+        int top = Math.max(28, height / 2 - 108);
 
         addRenderableWidget(Button.builder(
             Component.literal("Техника: " + config.technique().displayName()),
@@ -29,28 +30,38 @@ public final class TechniqueEditorScreen extends Screen {
             }
         ).bounds(center - 154, top, 308, 20).build());
 
-        addPair(center, top + 32,
+        addPair(center, top + 30,
             () -> config.adjustCycleScale(config.technique(), -0.05D),
             () -> config.adjustCycleScale(config.technique(), 0.05D));
-        addPair(center, top + 60,
+        addPair(center, top + 56,
             () -> config.adjustLeadOffset(config.technique(), -0.05D),
             () -> config.adjustLeadOffset(config.technique(), 0.05D));
-        addPair(center, top + 88,
+        addPair(center, top + 82,
             () -> config.adjustRotationScale(config.technique(), -0.10F),
             () -> config.adjustRotationScale(config.technique(), 0.10F));
-        addPair(center, top + 116,
+        addPair(center, top + 108,
             () -> config.adjustCadenceBias(config.technique(), -0.05D),
             () -> config.adjustCadenceBias(config.technique(), 0.05D));
 
         addRenderableWidget(Button.builder(
-            Component.literal("Сбросить профиль"),
+            Component.literal("Сбросить ручной профиль"),
             button -> config.resetTuning(config.technique())
-        ).bounds(center - 154, top + 150, 150, 20).build());
+        ).bounds(center - 154, top + 142, 150, 20).build());
+
+        addRenderableWidget(Button.builder(
+            Component.literal("Сбросить обучение"),
+            button -> LearningEngine.reset(serverId(), config.technique())
+        ).bounds(center + 4, top + 142, 150, 20).build());
+
+        addRenderableWidget(Button.builder(
+            Component.literal("Статистика обучения"),
+            button -> minecraft.setScreen(new LearningStatsScreen(this))
+        ).bounds(center - 154, top + 166, 150, 20).build());
 
         addRenderableWidget(Button.builder(
             Component.literal("Готово"),
             button -> onClose()
-        ).bounds(center + 4, top + 150, 150, 20).build());
+        ).bounds(center + 4, top + 166, 150, 20).build());
     }
 
     private void addPair(int center, int y, Runnable minus, Runnable plus) {
@@ -65,16 +76,43 @@ public final class TechniqueEditorScreen extends Screen {
         renderBackground(graphics, mouseX, mouseY, partialTick);
         BridgeConfig config = BridgeConfig.get();
         TechniqueTuning tuning = config.tuning(config.technique());
+        LearningProfile learned = LearningEngine.profile(serverId(), config.technique());
+        TechniqueTuning effective = config.autoLearning() ? learned.applyTo(tuning) : tuning;
         int center = width / 2;
-        int top = Math.max(34, height / 2 - 104);
+        int top = Math.max(28, height / 2 - 108);
 
-        graphics.drawCenteredString(font, title, center, 10, 0xFFFFFF);
-        graphics.drawCenteredString(font, Component.literal("Настройки сохраняются отдельно для каждой техники"), center, 22, 0xA0A0A0);
-        graphics.drawCenteredString(font, Component.literal("Длина цикла: " + percent(tuning.cycleScale())), center, top + 38, 0xE6E6E6);
-        graphics.drawCenteredString(font, Component.literal("Упреждение блока: " + signed(tuning.leadOffset())), center, top + 66, 0xE6E6E6);
-        graphics.drawCenteredString(font, Component.literal("Скорость поворота: " + percent(tuning.rotationScale())), center, top + 94, 0xE6E6E6);
-        graphics.drawCenteredString(font, Component.literal("Cadence bias: " + signed(tuning.cadenceBias())), center, top + 122, 0xE6E6E6);
+        graphics.drawCenteredString(font, title, center, 6, 0xFFFFFF);
+        graphics.drawCenteredString(font, Component.literal("Ручной профиль + отдельная коррекция текущего сервера"), center, 18, 0xA0A0A0);
+        graphics.drawCenteredString(font, Component.literal("Длина цикла: " + percent(tuning.cycleScale())), center, top + 36, 0xE6E6E6);
+        graphics.drawCenteredString(font, Component.literal("Упреждение блока: " + signed(tuning.leadOffset())), center, top + 62, 0xE6E6E6);
+        graphics.drawCenteredString(font, Component.literal("Скорость поворота: " + percent(tuning.rotationScale())), center, top + 88, 0xE6E6E6);
+        graphics.drawCenteredString(font, Component.literal("Cadence bias: " + signed(tuning.cadenceBias())), center, top + 114, 0xE6E6E6);
+
+        String learnedText = String.format(
+            Locale.ROOT,
+            "Learned: C %+.3f • L %+.3f • R %+.3f • Cad %+.3f • Conf %.0f%%",
+            learned.cycleAdjustment(),
+            learned.leadAdjustment(),
+            learned.rotationAdjustment(),
+            learned.cadenceAdjustment(),
+            learned.confidence() * 100.0D
+        );
+        graphics.drawCenteredString(font, Component.literal(learnedText), center, top + 128, 0x9FD7FF);
+
+        String effectiveText = String.format(
+            Locale.ROOT,
+            "Effective: %.2f • %+.2f • %.2f • %+.2f",
+            effective.cycleScale(),
+            effective.leadOffset(),
+            effective.rotationScale(),
+            effective.cadenceBias()
+        );
+        graphics.drawCenteredString(font, Component.literal(effectiveText), center, top + 190, 0xB8E6B8);
         super.render(graphics, mouseX, mouseY, partialTick);
+    }
+
+    private String serverId() {
+        return ServerContext.id(Minecraft.getInstance());
     }
 
     private static String percent(double value) {
@@ -88,6 +126,7 @@ public final class TechniqueEditorScreen extends Screen {
     @Override
     public void onClose() {
         BridgeConfig.get().save();
+        LearningEngine.flush();
         minecraft.setScreen(parent);
     }
 

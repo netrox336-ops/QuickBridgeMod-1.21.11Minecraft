@@ -17,8 +17,8 @@ public final class QuickBridgeScreen extends Screen {
     protected void init() {
         BridgeConfig config = BridgeConfig.get();
         int center = width / 2;
-        int top = Math.max(22, height / 2 - 120);
-        int step = 24;
+        int top = Math.max(20, height / 2 - 112);
+        int step = 22;
 
         addRenderableWidget(Button.builder(
             Component.literal("Техника: " + config.technique().displayName()),
@@ -45,34 +45,31 @@ public final class QuickBridgeScreen extends Screen {
         ).bounds(center + 4, top + step, 150, 20).build());
 
         addRenderableWidget(Button.builder(
+            Component.literal("Автообучение: " + state(config.autoLearning())),
+            button -> {
+                config.toggleAutoLearning();
+                button.setMessage(Component.literal("Автообучение: " + state(config.autoLearning())));
+            }
+        ).bounds(center - 154, top + step * 2, 150, 20).build());
+
+        addRenderableWidget(Button.builder(
+            Component.literal("Статистика сервера"),
+            button -> minecraft.setScreen(new LearningStatsScreen(this))
+        ).bounds(center + 4, top + step * 2, 150, 20).build());
+
+        addRenderableWidget(Button.builder(
             Component.literal("Автовыбор: " + state(config.autoSelectBlocks())),
             button -> {
                 config.toggleAutoSelectBlocks();
                 button.setMessage(Component.literal("Автовыбор: " + state(config.autoSelectBlocks())));
             }
-        ).bounds(center - 154, top + step * 2, 150, 20).build());
+        ).bounds(center - 154, top + step * 3, 150, 20).build());
 
         addRenderableWidget(Button.builder(
             Component.literal("Sneak assist: " + state(config.sneakAssist())),
             button -> {
                 config.toggleSneakAssist();
                 button.setMessage(Component.literal("Sneak assist: " + state(config.sneakAssist())));
-            }
-        ).bounds(center + 4, top + step * 2, 150, 20).build());
-
-        addRenderableWidget(Button.builder(
-            Component.literal("Stop on fall: " + state(config.stopOnFall())),
-            button -> {
-                config.toggleStopOnFall();
-                button.setMessage(Component.literal("Stop on fall: " + state(config.stopOnFall())));
-            }
-        ).bounds(center - 154, top + step * 3, 150, 20).build());
-
-        addRenderableWidget(Button.builder(
-            Component.literal("Stop on GUI: " + state(config.stopOnGui())),
-            button -> {
-                config.toggleStopOnGui();
-                button.setMessage(Component.literal("Stop on GUI: " + state(config.stopOnGui())));
             }
         ).bounds(center + 4, top + step * 3, 150, 20).build());
 
@@ -125,9 +122,17 @@ public final class QuickBridgeScreen extends Screen {
         ).bounds(center + 4, top + step * 6, 150, 20).build());
 
         addRenderableWidget(Button.builder(
-            Component.literal("Калибровка выбранной техники"),
+            Component.literal("Ручная калибровка"),
             button -> minecraft.setScreen(new TechniqueEditorScreen(this))
-        ).bounds(center - 154, top + step * 7, 308, 20).build());
+        ).bounds(center - 154, top + step * 7, 150, 20).build());
+
+        addRenderableWidget(Button.builder(
+            Component.literal("Learning HUD: " + state(config.learningHud())),
+            button -> {
+                config.toggleLearningHud();
+                button.setMessage(Component.literal("Learning HUD: " + state(config.learningHud())));
+            }
+        ).bounds(center + 4, top + step * 7, 150, 20).build());
 
         addRenderableWidget(Button.builder(Component.literal("Готово"), button -> onClose())
             .bounds(center - 100, top + step * 8, 200, 20).build());
@@ -140,14 +145,15 @@ public final class QuickBridgeScreen extends Screen {
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
         renderBackground(graphics, mouseX, mouseY, partialTick);
-        graphics.drawCenteredString(font, title, width / 2, 4, 0xFFFFFF);
-        graphics.drawCenteredString(font, Component.literal("v0.3 • adaptive cadence • state machines • per-technique tuning"), width / 2, 15, 0xA0A0A0);
+        graphics.drawCenteredString(font, title, width / 2, 3, 0xFFFFFF);
+        graphics.drawCenteredString(font, Component.literal("v0.4 • server learning • recovery FSM • adaptive profiles"), width / 2, 14, 0xA0A0A0);
         super.render(graphics, mouseX, mouseY, partialTick);
     }
 
     @Override
     public void onClose() {
         BridgeConfig.get().save();
+        LearningEngine.flush();
         minecraft.setScreen(parent);
     }
 

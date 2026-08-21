@@ -20,6 +20,8 @@ public final class BridgeConfig {
     private ControlMode controlMode = ControlMode.HOLD;
     private boolean hudEnabled = true;
     private boolean diagnosticHud = true;
+    private boolean autoLearning = true;
+    private boolean learningHud = true;
     private boolean autoSelectBlocks = true;
     private boolean stopOnFall = true;
     private boolean stopOnGui = true;
@@ -59,6 +61,8 @@ public final class BridgeConfig {
             catch (IllegalArgumentException ignored) {}
             hudEnabled = Boolean.parseBoolean(p.getProperty("hudEnabled", "true"));
             diagnosticHud = Boolean.parseBoolean(p.getProperty("diagnosticHud", "true"));
+            autoLearning = Boolean.parseBoolean(p.getProperty("autoLearning", "true"));
+            learningHud = Boolean.parseBoolean(p.getProperty("learningHud", "true"));
             autoSelectBlocks = Boolean.parseBoolean(p.getProperty("autoSelectBlocks", "true"));
             stopOnFall = Boolean.parseBoolean(p.getProperty("stopOnFall", "true"));
             stopOnGui = Boolean.parseBoolean(p.getProperty("stopOnGui", "true"));
@@ -91,6 +95,8 @@ public final class BridgeConfig {
         p.setProperty("controlMode", controlMode.name());
         p.setProperty("hudEnabled", Boolean.toString(hudEnabled));
         p.setProperty("diagnosticHud", Boolean.toString(diagnosticHud));
+        p.setProperty("autoLearning", Boolean.toString(autoLearning));
+        p.setProperty("learningHud", Boolean.toString(learningHud));
         p.setProperty("autoSelectBlocks", Boolean.toString(autoSelectBlocks));
         p.setProperty("stopOnFall", Boolean.toString(stopOnFall));
         p.setProperty("stopOnGui", Boolean.toString(stopOnGui));
@@ -117,7 +123,7 @@ public final class BridgeConfig {
         try {
             Files.createDirectories(file.getParent());
             try (OutputStream output = Files.newOutputStream(file)) {
-                p.store(output, "QuickBridge 0.3.0");
+                p.store(output, "QuickBridge 0.4.0");
             }
         } catch (IOException ignored) {}
     }
@@ -154,6 +160,10 @@ public final class BridgeConfig {
     public void toggleHud() { hudEnabled = !hudEnabled; save(); }
     public boolean diagnosticHud() { return diagnosticHud; }
     public void toggleDiagnosticHud() { diagnosticHud = !diagnosticHud; save(); }
+    public boolean autoLearning() { return autoLearning; }
+    public void toggleAutoLearning() { autoLearning = !autoLearning; save(); }
+    public boolean learningHud() { return learningHud; }
+    public void toggleLearningHud() { learningHud = !learningHud; save(); }
     public boolean autoSelectBlocks() { return autoSelectBlocks; }
     public void toggleAutoSelectBlocks() { autoSelectBlocks = !autoSelectBlocks; save(); }
     public boolean stopOnFall() { return stopOnFall; }

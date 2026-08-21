@@ -16,12 +16,14 @@ public final class QuickBridgeHudRenderer {
         int y = config.hudY();
         int blocks = PlacementHelper.countHotbarBlocks(minecraft.player);
         BridgeTechnique technique = config.technique();
-        int width = config.diagnosticHud() ? 244 : Math.max(158, minecraft.font.width(technique.displayName()) + 52);
-        int height = config.diagnosticHud() ? 70 : 45;
+        boolean diagnostics = config.diagnosticHud();
+        boolean learning = diagnostics && config.learningHud();
+        int width = diagnostics ? 272 : Math.max(158, minecraft.font.width(technique.displayName()) + 52);
+        int height = learning ? 84 : diagnostics ? 70 : 45;
 
         graphics.fill(x, y, x + width, y + height, 0xB0101010);
         graphics.fill(x, y, x + 3, y + height, BridgeEngine.active() ? 0xFF55FF55 : 0xFF777777);
-        graphics.drawString(minecraft.font, "QUICKBRIDGE 0.3", x + 8, y + 6, 0xFFFFFFFF, true);
+        graphics.drawString(minecraft.font, "QUICKBRIDGE 0.4", x + 8, y + 6, 0xFFFFFFFF, true);
         graphics.drawString(
             minecraft.font,
             technique.displayName() + (technique.experimental() ? " [EXP]" : ""),
@@ -41,25 +43,45 @@ public final class QuickBridgeHudRenderer {
             true
         );
 
-        if (config.diagnosticHud()) {
+        if (diagnostics) {
             String edge = BridgeEngine.edgeDistance() >= 0.89D
                 ? "safe"
                 : String.format(Locale.ROOT, "%.2f", BridgeEngine.edgeDistance());
-            String diagnostics = "OK " + BridgeEngine.confirmedPlacements()
+            String placement = "OK " + BridgeEngine.confirmedPlacements()
                 + " • R " + BridgeEngine.recoveryAttempts()
                 + " • F " + BridgeEngine.failedPlacements()
                 + " • Edge " + edge;
-            graphics.drawString(minecraft.font, diagnostics, x + 8, y + 42, 0xFFB8B8B8, true);
+            graphics.drawString(minecraft.font, placement, x + 8, y + 42, 0xFFB8B8B8, true);
 
             String adaptive = String.format(
                 Locale.ROOT,
-                "Speed %.3f • Cad %.2fx • Ack %.1ft • %.0f%%",
+                "Speed %.3f • Cad %.2fx • ACK %.1ft • Run %.0f%%",
                 BridgeEngine.horizontalSpeed(),
                 BridgeEngine.cadenceFactor(),
                 BridgeEngine.averageConfirmationTicks(),
                 BridgeEngine.placementReliability() * 100.0D
             );
             graphics.drawString(minecraft.font, adaptive, x + 8, y + 54, 0xFF9FD7FF, true);
+        }
+
+        if (learning) {
+            LearningProfile profile = BridgeEngine.learningProfile();
+            String learned = String.format(
+                Locale.ROOT,
+                "Learn %d • %.0f%% • Conf %.0f%% • %s",
+                profile.samples(),
+                profile.reliability() * 100.0D,
+                profile.confidence() * 100.0D,
+                ServerContext.shortLabel(BridgeEngine.serverLabel())
+            );
+            graphics.drawString(
+                minecraft.font,
+                learned,
+                x + 8,
+                y + 68,
+                config.autoLearning() ? 0xFFB8E6B8 : 0xFF888888,
+                true
+            );
         }
     }
 }
