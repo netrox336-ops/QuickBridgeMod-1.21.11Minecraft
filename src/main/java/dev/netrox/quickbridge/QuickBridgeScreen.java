@@ -17,7 +17,7 @@ public final class QuickBridgeScreen extends Screen {
     protected void init() {
         BridgeConfig config = BridgeConfig.get();
         int center = width / 2;
-        int top = Math.max(42, height / 2 - 92);
+        int top = Math.max(30, height / 2 - 112);
 
         addRenderableWidget(Button.builder(
             Component.literal("Техника: " + config.technique().displayName()),
@@ -44,10 +44,10 @@ public final class QuickBridgeScreen extends Screen {
         ).bounds(center + 4, top + 26, 150, 20).build());
 
         addRenderableWidget(Button.builder(
-            Component.literal("Автовыбор блоков: " + state(config.autoSelectBlocks())),
+            Component.literal("Автовыбор: " + state(config.autoSelectBlocks())),
             button -> {
                 config.toggleAutoSelectBlocks();
-                button.setMessage(Component.literal("Автовыбор блоков: " + state(config.autoSelectBlocks())));
+                button.setMessage(Component.literal("Автовыбор: " + state(config.autoSelectBlocks())));
             }
         ).bounds(center - 154, top + 52, 150, 20).build());
 
@@ -75,8 +75,56 @@ public final class QuickBridgeScreen extends Screen {
             }
         ).bounds(center + 4, top + 78, 150, 20).build());
 
+        addRenderableWidget(Button.builder(
+            Component.literal("Recovery: " + state(config.placementRecovery())),
+            button -> {
+                config.togglePlacementRecovery();
+                button.setMessage(Component.literal("Recovery: " + state(config.placementRecovery())));
+            }
+        ).bounds(center - 154, top + 104, 150, 20).build());
+
+        addRenderableWidget(Button.builder(
+            Component.literal("Вернуть камеру: " + state(config.restoreView())),
+            button -> {
+                config.toggleRestoreView();
+                button.setMessage(Component.literal("Вернуть камеру: " + state(config.restoreView())));
+            }
+        ).bounds(center + 4, top + 104, 150, 20).build());
+
+        addRenderableWidget(Button.builder(
+            Component.literal("Fail-stop: " + state(config.stopOnPlacementFailures())),
+            button -> {
+                config.toggleStopOnPlacementFailures();
+                button.setMessage(Component.literal("Fail-stop: " + state(config.stopOnPlacementFailures())));
+            }
+        ).bounds(center - 154, top + 130, 150, 20).build());
+
+        addRenderableWidget(Button.builder(
+            Component.literal("Диагностика HUD: " + state(config.diagnosticHud())),
+            button -> {
+                config.toggleDiagnosticHud();
+                button.setMessage(Component.literal("Диагностика HUD: " + state(config.diagnosticHud())));
+            }
+        ).bounds(center + 4, top + 130, 150, 20).build());
+
+        addRenderableWidget(Button.builder(
+            Component.literal("Повторы: " + config.maxRecoveryAttempts()),
+            button -> {
+                config.nextRecoveryAttempts();
+                button.setMessage(Component.literal("Повторы: " + config.maxRecoveryAttempts()));
+            }
+        ).bounds(center - 154, top + 156, 150, 20).build());
+
+        addRenderableWidget(Button.builder(
+            Component.literal("Подтверждение: " + config.confirmationTicks() + "t"),
+            button -> {
+                config.nextConfirmationTicks();
+                button.setMessage(Component.literal("Подтверждение: " + config.confirmationTicks() + "t"));
+            }
+        ).bounds(center + 4, top + 156, 150, 20).build());
+
         addRenderableWidget(Button.builder(Component.literal("Готово"), button -> onClose())
-            .bounds(center - 100, top + 112, 200, 20).build());
+            .bounds(center - 100, top + 190, 200, 20).build());
     }
 
     private static String state(boolean value) {
@@ -86,8 +134,8 @@ public final class QuickBridgeScreen extends Screen {
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
         renderBackground(graphics, mouseX, mouseY, partialTick);
-        graphics.drawCenteredString(font, title, width / 2, 16, 0xFFFFFF);
-        graphics.drawCenteredString(font, Component.literal("B — мост • N — техника • K — аварийный стоп • O — настройки"), width / 2, 29, 0xA0A0A0);
+        graphics.drawCenteredString(font, title, width / 2, 8, 0xFFFFFF);
+        graphics.drawCenteredString(font, Component.literal("v0.2 • Rotation Engine • placement recovery • edge detection"), width / 2, 20, 0xA0A0A0);
         super.render(graphics, mouseX, mouseY, partialTick);
     }
 

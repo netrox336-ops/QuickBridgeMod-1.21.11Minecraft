@@ -79,6 +79,9 @@ public final class QuickBridgeClient {
         }
 
         BridgeEngine.tick(minecraft, config);
+        if (!BridgeEngine.active() && config.controlMode() == ControlMode.TOGGLE) {
+            toggleState = false;
+        }
     }
 
     public static void addHudLayer(AddGuiOverlayLayersEvent event) {
