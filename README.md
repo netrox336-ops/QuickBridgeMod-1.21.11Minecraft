@@ -1,23 +1,21 @@
 # QuickBridge — Minecraft 1.21.11
 
-**QuickBridge** — client-side Forge-мод с world-aware движком бриджинга. Он управляет движением игрока, камерой и постановкой блоков, ориентируясь на реальное состояние мира, а не только на фиксированные AHK-таймеры.
+**QuickBridge** — client-side Forge-мод с world-aware движком бриджинга. Он управляет движением игрока, камерой и постановкой блоков, ориентируясь на реальное состояние мира и серверные подтверждения, а не только на фиксированные AHK-таймеры.
 
 > Важно: автоматизированный bridging может нарушать правила отдельных серверов. QuickBridge не содержит функций обхода античита, маскировки или античит-эвейжна. Используйте мод только там, где такие функции разрешены.
 
-## Что нового в v0.2.0
+## Что нового в v0.3.0
 
-- **Rotation Engine** — плавные yaw/pitch профили для техник, которым требуется разворот камеры;
-- **world-direction movement** — камера может поворачиваться, а желаемое направление движения сохраняется;
-- фазовая логика **Telly / Speed Telly / Blink**: разбег → прыжок → разворот → placement window;
-- отдельные oscillation-профили для **Breezily / Witchly / Andromeda / Moonwalk**;
-- новый **Edge Detector**, который сканирует реальную опору впереди траектории игрока;
-- **placement confirmation** — попытка считается подтвержденной только когда блок реально появился в мире;
-- **placement recovery** — неподтвержденная установка ограниченно повторяется;
-- **Fail-stop** — автоматическая остановка после серии placement failures;
-- **Restore View** — возврат исходного yaw/pitch после завершения;
-- расширенный HUD с фазой движка, confirmed/retry/fail и edge distance;
-- Auto Select Blocks теперь предпочитает самый большой стак блоков;
-- исправлена синхронизация Toggle после автоматического safety-stop.
+- **Technique State Machine** — сложные техники больше не завязаны только на `tick % cycle`;
+- Telly / Speed Telly / Blink / Andromeda работают по фазам `RUNUP → JUMP → TURN → BURST → RESET`;
+- Witchly / Breezily / Moonwalk получили отдельные левую и правую strafe-фазы;
+- **Adaptive Cadence** оценивает горизонтальную скорость игрока, успешность placement и задержку серверных подтверждений;
+- при нестабильных подтверждениях cadence автоматически замедляется, вместо того чтобы продолжать проигрывать слишком быстрый паттерн;
+- **Recovery Hold**: при повторной установке QuickBridge кратко удерживает игрока и sneak, чтобы не продолжать движение по неподтвержденному мосту;
+- placement lead автоматически получает небольшую поправку от фактической скорости игрока;
+- **Per-Technique Tuning** — для каждого профиля отдельно сохраняются длина цикла, placement lead, скорость вращения и cadence bias;
+- добавлен отдельный экран **Калибровка техники**;
+- diagnostic HUD теперь показывает скорость, cadence multiplier, среднюю задержку ACK блока и reliability placements.
 
 ## Техники
 
@@ -38,7 +36,18 @@ QuickBridge содержит 14 профилей:
 - Slope Bridging
 - Moonwalk
 
-Профиль каждой техники задаёт movement style, placement cadence, jump cadence, rotation mode, cycle, placement window, placement lead, pitch, rotation speed, edge threshold и oscillation. Техники с `[EXP]` требуют дальнейшей практической калибровки под серверную физику и задержку.
+Техники с `[EXP]` требуют дальнейшей практической калибровки под серверную физику и задержку. Начиная с v0.3.0 калибровку можно менять прямо в игре отдельно для каждого профиля.
+
+## Калибровка техники
+
+Для каждой техники доступны четыре независимых параметра:
+
+- **Длина цикла** — растягивает или сжимает state-machine cycle;
+- **Упреждение блока** — сдвигает прогнозируемую точку постановки вперед/назад;
+- **Скорость поворота** — масштабирует Rotation Engine;
+- **Cadence bias** — ручная поправка к адаптивной скорости выполнения профиля.
+
+Настройки сохраняются в `config/quickbridge.properties` отдельно для каждого `BridgeTechnique`.
 
 ## Управление по умолчанию
 
@@ -66,20 +75,21 @@ QuickBridge содержит 14 профилей:
 - Restore View;
 - Diagnostic HUD.
 
-Движок хранит очередь pending placements. Если сервер не подтвердил блок за заданное окно, QuickBridge может повторить установку. После исчерпания повторов placement отмечается как failed; несколько последовательных failures могут автоматически остановить bridging.
+Движок хранит очередь pending placements. Если сервер не подтвердил блок за заданное окно, QuickBridge может повторить установку. Во время recovery state машина кратко останавливает движение. После исчерпания повторов placement отмечается как failed; несколько последовательных failures могут автоматически остановить bridging.
 
 ## HUD
 
 HUD показывает:
 
-- текущую технику;
-- `ACTIVE / RUN / PLACE / EDGE / RECOVERY / OFF`;
+- текущую технику и state-machine phase;
 - количество блоков в хотбаре;
 - режим Hold/Toggle;
-- количество подтвержденных установок;
-- число recovery attempts;
-- failures;
-- оценку расстояния до края/отсутствия опоры.
+- confirmed / recovery / failed placements;
+- edge distance;
+- горизонтальную скорость игрока;
+- текущий adaptive cadence multiplier;
+- среднее время подтверждения блока в тиках;
+- reliability подтверждений.
 
 ## Требования
 
@@ -96,13 +106,17 @@ HUD показывает:
 
 ## Архитектура
 
-- `BridgeTechnique` — каталог техник и tuning-параметры;
-- `BridgeEngine` — runtime/state machine, movement и pending placements;
-- `RotationEngine` — управление yaw/pitch;
+- `BridgeTechnique` — базовый каталог профилей;
+- `TechniqueStateMachine` — фазы и runtime-переходы техник;
+- `AdaptiveCadence` — адаптация к скорости и server ACK;
+- `TechniqueTuning` — пользовательская калибровка профиля;
+- `BridgeEngine` — movement, placement queue и recovery;
+- `RotationEngine` — управление yaw/pitch по фазам state machine;
 - `EdgeDetector` — оценка края по состоянию мира;
 - `PlacementHelper` — выбор блока, поиск валидной грани и отправка placement;
-- `BridgeConfig` — пользовательские настройки;
+- `BridgeConfig` — настройки и per-technique tuning;
+- `TechniqueEditorScreen` — редактор калибровки;
 - `QuickBridgeHudRenderer` — HUD;
-- `QuickBridgeScreen` — меню конфигурации.
+- `QuickBridgeScreen` — главное меню конфигурации.
 
 Подробная таблица профилей находится в `docs/TECHNIQUES.md`.
