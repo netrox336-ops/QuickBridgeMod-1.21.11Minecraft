@@ -17,7 +17,8 @@ public final class QuickBridgeScreen extends Screen {
     protected void init() {
         BridgeConfig config = BridgeConfig.get();
         int center = width / 2;
-        int top = Math.max(30, height / 2 - 112);
+        int top = Math.max(22, height / 2 - 120);
+        int step = 24;
 
         addRenderableWidget(Button.builder(
             Component.literal("Техника: " + config.technique().displayName()),
@@ -33,7 +34,7 @@ public final class QuickBridgeScreen extends Screen {
                 config.nextControlMode();
                 button.setMessage(Component.literal("Режим: " + config.controlMode().displayName()));
             }
-        ).bounds(center - 154, top + 26, 150, 20).build());
+        ).bounds(center - 154, top + step, 150, 20).build());
 
         addRenderableWidget(Button.builder(
             Component.literal("HUD: " + state(config.hudEnabled())),
@@ -41,7 +42,7 @@ public final class QuickBridgeScreen extends Screen {
                 config.toggleHud();
                 button.setMessage(Component.literal("HUD: " + state(config.hudEnabled())));
             }
-        ).bounds(center + 4, top + 26, 150, 20).build());
+        ).bounds(center + 4, top + step, 150, 20).build());
 
         addRenderableWidget(Button.builder(
             Component.literal("Автовыбор: " + state(config.autoSelectBlocks())),
@@ -49,7 +50,7 @@ public final class QuickBridgeScreen extends Screen {
                 config.toggleAutoSelectBlocks();
                 button.setMessage(Component.literal("Автовыбор: " + state(config.autoSelectBlocks())));
             }
-        ).bounds(center - 154, top + 52, 150, 20).build());
+        ).bounds(center - 154, top + step * 2, 150, 20).build());
 
         addRenderableWidget(Button.builder(
             Component.literal("Sneak assist: " + state(config.sneakAssist())),
@@ -57,7 +58,7 @@ public final class QuickBridgeScreen extends Screen {
                 config.toggleSneakAssist();
                 button.setMessage(Component.literal("Sneak assist: " + state(config.sneakAssist())));
             }
-        ).bounds(center + 4, top + 52, 150, 20).build());
+        ).bounds(center + 4, top + step * 2, 150, 20).build());
 
         addRenderableWidget(Button.builder(
             Component.literal("Stop on fall: " + state(config.stopOnFall())),
@@ -65,7 +66,7 @@ public final class QuickBridgeScreen extends Screen {
                 config.toggleStopOnFall();
                 button.setMessage(Component.literal("Stop on fall: " + state(config.stopOnFall())));
             }
-        ).bounds(center - 154, top + 78, 150, 20).build());
+        ).bounds(center - 154, top + step * 3, 150, 20).build());
 
         addRenderableWidget(Button.builder(
             Component.literal("Stop on GUI: " + state(config.stopOnGui())),
@@ -73,7 +74,7 @@ public final class QuickBridgeScreen extends Screen {
                 config.toggleStopOnGui();
                 button.setMessage(Component.literal("Stop on GUI: " + state(config.stopOnGui())));
             }
-        ).bounds(center + 4, top + 78, 150, 20).build());
+        ).bounds(center + 4, top + step * 3, 150, 20).build());
 
         addRenderableWidget(Button.builder(
             Component.literal("Recovery: " + state(config.placementRecovery())),
@@ -81,7 +82,7 @@ public final class QuickBridgeScreen extends Screen {
                 config.togglePlacementRecovery();
                 button.setMessage(Component.literal("Recovery: " + state(config.placementRecovery())));
             }
-        ).bounds(center - 154, top + 104, 150, 20).build());
+        ).bounds(center - 154, top + step * 4, 150, 20).build());
 
         addRenderableWidget(Button.builder(
             Component.literal("Вернуть камеру: " + state(config.restoreView())),
@@ -89,7 +90,7 @@ public final class QuickBridgeScreen extends Screen {
                 config.toggleRestoreView();
                 button.setMessage(Component.literal("Вернуть камеру: " + state(config.restoreView())));
             }
-        ).bounds(center + 4, top + 104, 150, 20).build());
+        ).bounds(center + 4, top + step * 4, 150, 20).build());
 
         addRenderableWidget(Button.builder(
             Component.literal("Fail-stop: " + state(config.stopOnPlacementFailures())),
@@ -97,7 +98,7 @@ public final class QuickBridgeScreen extends Screen {
                 config.toggleStopOnPlacementFailures();
                 button.setMessage(Component.literal("Fail-stop: " + state(config.stopOnPlacementFailures())));
             }
-        ).bounds(center - 154, top + 130, 150, 20).build());
+        ).bounds(center - 154, top + step * 5, 150, 20).build());
 
         addRenderableWidget(Button.builder(
             Component.literal("Диагностика HUD: " + state(config.diagnosticHud())),
@@ -105,7 +106,7 @@ public final class QuickBridgeScreen extends Screen {
                 config.toggleDiagnosticHud();
                 button.setMessage(Component.literal("Диагностика HUD: " + state(config.diagnosticHud())));
             }
-        ).bounds(center + 4, top + 130, 150, 20).build());
+        ).bounds(center + 4, top + step * 5, 150, 20).build());
 
         addRenderableWidget(Button.builder(
             Component.literal("Повторы: " + config.maxRecoveryAttempts()),
@@ -113,7 +114,7 @@ public final class QuickBridgeScreen extends Screen {
                 config.nextRecoveryAttempts();
                 button.setMessage(Component.literal("Повторы: " + config.maxRecoveryAttempts()));
             }
-        ).bounds(center - 154, top + 156, 150, 20).build());
+        ).bounds(center - 154, top + step * 6, 150, 20).build());
 
         addRenderableWidget(Button.builder(
             Component.literal("Подтверждение: " + config.confirmationTicks() + "t"),
@@ -121,10 +122,15 @@ public final class QuickBridgeScreen extends Screen {
                 config.nextConfirmationTicks();
                 button.setMessage(Component.literal("Подтверждение: " + config.confirmationTicks() + "t"));
             }
-        ).bounds(center + 4, top + 156, 150, 20).build());
+        ).bounds(center + 4, top + step * 6, 150, 20).build());
+
+        addRenderableWidget(Button.builder(
+            Component.literal("Калибровка выбранной техники"),
+            button -> minecraft.setScreen(new TechniqueEditorScreen(this))
+        ).bounds(center - 154, top + step * 7, 308, 20).build());
 
         addRenderableWidget(Button.builder(Component.literal("Готово"), button -> onClose())
-            .bounds(center - 100, top + 190, 200, 20).build());
+            .bounds(center - 100, top + step * 8, 200, 20).build());
     }
 
     private static String state(boolean value) {
@@ -134,8 +140,8 @@ public final class QuickBridgeScreen extends Screen {
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
         renderBackground(graphics, mouseX, mouseY, partialTick);
-        graphics.drawCenteredString(font, title, width / 2, 8, 0xFFFFFF);
-        graphics.drawCenteredString(font, Component.literal("v0.2 • Rotation Engine • placement recovery • edge detection"), width / 2, 20, 0xA0A0A0);
+        graphics.drawCenteredString(font, title, width / 2, 4, 0xFFFFFF);
+        graphics.drawCenteredString(font, Component.literal("v0.3 • adaptive cadence • state machines • per-technique tuning"), width / 2, 15, 0xA0A0A0);
         super.render(graphics, mouseX, mouseY, partialTick);
     }
 
