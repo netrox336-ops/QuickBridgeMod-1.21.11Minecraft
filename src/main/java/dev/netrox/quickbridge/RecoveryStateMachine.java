@@ -22,6 +22,10 @@ public final class RecoveryStateMachine {
         return target;
     }
 
+    public boolean begin(BlockPos position) {
+        return begin(position, BridgeConfig.get().technique());
+    }
+
     public boolean begin(BlockPos position, BridgeTechnique bridgeTechnique) {
         if (position == null || active()) return false;
         target = position.immutable();
