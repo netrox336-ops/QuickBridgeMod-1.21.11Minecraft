@@ -16,12 +16,12 @@ public final class QuickBridgeHudRenderer {
         int y = config.hudY();
         int blocks = PlacementHelper.countHotbarBlocks(minecraft.player);
         BridgeTechnique technique = config.technique();
-        int width = config.diagnosticHud() ? 206 : Math.max(154, minecraft.font.width(technique.displayName()) + 50);
-        int height = config.diagnosticHud() ? 58 : 45;
+        int width = config.diagnosticHud() ? 244 : Math.max(158, minecraft.font.width(technique.displayName()) + 52);
+        int height = config.diagnosticHud() ? 70 : 45;
 
         graphics.fill(x, y, x + width, y + height, 0xB0101010);
         graphics.fill(x, y, x + 3, y + height, BridgeEngine.active() ? 0xFF55FF55 : 0xFF777777);
-        graphics.drawString(minecraft.font, "QUICKBRIDGE 0.2", x + 8, y + 6, 0xFFFFFFFF, true);
+        graphics.drawString(minecraft.font, "QUICKBRIDGE 0.3", x + 8, y + 6, 0xFFFFFFFF, true);
         graphics.drawString(
             minecraft.font,
             technique.displayName() + (technique.experimental() ? " [EXP]" : ""),
@@ -50,6 +50,16 @@ public final class QuickBridgeHudRenderer {
                 + " • F " + BridgeEngine.failedPlacements()
                 + " • Edge " + edge;
             graphics.drawString(minecraft.font, diagnostics, x + 8, y + 42, 0xFFB8B8B8, true);
+
+            String adaptive = String.format(
+                Locale.ROOT,
+                "Speed %.3f • Cad %.2fx • Ack %.1ft • %.0f%%",
+                BridgeEngine.horizontalSpeed(),
+                BridgeEngine.cadenceFactor(),
+                BridgeEngine.averageConfirmationTicks(),
+                BridgeEngine.placementReliability() * 100.0D
+            );
+            graphics.drawString(minecraft.font, adaptive, x + 8, y + 54, 0xFF9FD7FF, true);
         }
     }
 }
