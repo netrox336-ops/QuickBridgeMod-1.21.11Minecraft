@@ -30,18 +30,27 @@ public final class PlacementHelper {
         if (isBlock(player.getInventory().getItem(current))) return true;
         if (!autoSelect) return false;
 
+        int bestSlot = -1;
+        int bestCount = -1;
         for (int slot = 0; slot < 9; slot++) {
-            if (!isBlock(player.getInventory().getItem(slot))) continue;
-            player.getInventory().setSelectedSlot(slot);
-            return true;
+            ItemStack stack = player.getInventory().getItem(slot);
+            if (!isBlock(stack) || stack.getCount() <= bestCount) continue;
+            bestSlot = slot;
+            bestCount = stack.getCount();
         }
-        return false;
+        if (bestSlot < 0) return false;
+
+        player.getInventory().setSelectedSlot(bestSlot);
+        return true;
     }
 
-    public static boolean tryPlace(Minecraft minecraft, BlockPos target) {
+    public static PlacementAttempt tryPlace(Minecraft minecraft, BlockPos target) {
         LocalPlayer player = minecraft.player;
-        if (player == null || minecraft.level == null || minecraft.gameMode == null) return false;
-        if (!minecraft.level.getBlockState(target).isAir()) return false;
+        if (player == null || minecraft.level == null || minecraft.gameMode == null) return null;
+        if (!minecraft.level.getBlockState(target).isAir()) return null;
+
+        PlacementAttempt best = null;
+        double bestDistance = Double.MAX_VALUE;
 
         for (Direction face : Direction.values()) {
             BlockPos neighbor = target.relative(face.getOpposite());
@@ -52,19 +61,31 @@ public final class PlacementHelper {
                 neighbor.getY() + 0.5D + face.getStepY() * 0.5D,
                 neighbor.getZ() + 0.5D + face.getStepZ() * 0.5D
             );
-            if (player.getEyePosition().distanceToSqr(hitLocation) > 25.0D) continue;
+            double distance = player.getEyePosition().distanceToSqr(hitLocation);
+            if (distance > 25.0D || distance >= bestDistance) continue;
 
-            minecraft.gameMode.useItemOn(
-                player,
-                InteractionHand.MAIN_HAND,
-                new BlockHitResult(hitLocation, face, neighbor, false)
-            );
-            return true;
+            bestDistance = distance;
+            best = new PlacementAttempt(target, neighbor, face, hitLocation);
         }
-        return false;
+
+        if (best == null) return null;
+
+        minecraft.gameMode.useItemOn(
+            player,
+            InteractionHand.MAIN_HAND,
+            new BlockHitResult(best.hitLocation(), best.face(), best.neighbor(), false)
+        );
+        player.swing(InteractionHand.MAIN_HAND);
+        return best;
+    }
+
+    public static boolean isPlaced(Minecraft minecraft, BlockPos target) {
+        return minecraft.level != null && !minecraft.level.getBlockState(target).isAir();
     }
 
     private static boolean isBlock(ItemStack stack) {
         return !stack.isEmpty() && stack.getItem() instanceof BlockItem;
     }
+
+    public record PlacementAttempt(BlockPos target, BlockPos neighbor, Direction face, Vec3 hitLocation) {}
 }
