@@ -22,6 +22,7 @@ public final class BridgeConfig {
     private boolean diagnosticHud = true;
     private boolean autoLearning = true;
     private boolean learningHud = true;
+    private boolean trainingMode;
     private boolean autoSelectBlocks = true;
     private boolean stopOnFall = true;
     private boolean stopOnGui = true;
@@ -63,6 +64,7 @@ public final class BridgeConfig {
             diagnosticHud = Boolean.parseBoolean(p.getProperty("diagnosticHud", "true"));
             autoLearning = Boolean.parseBoolean(p.getProperty("autoLearning", "true"));
             learningHud = Boolean.parseBoolean(p.getProperty("learningHud", "true"));
+            trainingMode = Boolean.parseBoolean(p.getProperty("trainingMode", "false"));
             autoSelectBlocks = Boolean.parseBoolean(p.getProperty("autoSelectBlocks", "true"));
             stopOnFall = Boolean.parseBoolean(p.getProperty("stopOnFall", "true"));
             stopOnGui = Boolean.parseBoolean(p.getProperty("stopOnGui", "true"));
@@ -97,6 +99,7 @@ public final class BridgeConfig {
         p.setProperty("diagnosticHud", Boolean.toString(diagnosticHud));
         p.setProperty("autoLearning", Boolean.toString(autoLearning));
         p.setProperty("learningHud", Boolean.toString(learningHud));
+        p.setProperty("trainingMode", Boolean.toString(trainingMode));
         p.setProperty("autoSelectBlocks", Boolean.toString(autoSelectBlocks));
         p.setProperty("stopOnFall", Boolean.toString(stopOnFall));
         p.setProperty("stopOnGui", Boolean.toString(stopOnGui));
@@ -123,7 +126,7 @@ public final class BridgeConfig {
         try {
             Files.createDirectories(file.getParent());
             try (OutputStream output = Files.newOutputStream(file)) {
-                p.store(output, "QuickBridge 0.4.0");
+                p.store(output, "QuickBridge 0.5.0");
             }
         } catch (IOException ignored) {}
     }
@@ -164,6 +167,8 @@ public final class BridgeConfig {
     public void toggleAutoLearning() { autoLearning = !autoLearning; save(); }
     public boolean learningHud() { return learningHud; }
     public void toggleLearningHud() { learningHud = !learningHud; save(); }
+    public boolean trainingMode() { return trainingMode; }
+    public void toggleTrainingMode() { trainingMode = !trainingMode; TrainingSession.reset(); save(); }
     public boolean autoSelectBlocks() { return autoSelectBlocks; }
     public void toggleAutoSelectBlocks() { autoSelectBlocks = !autoSelectBlocks; save(); }
     public boolean stopOnFall() { return stopOnFall; }

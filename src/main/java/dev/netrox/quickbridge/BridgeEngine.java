@@ -12,8 +12,10 @@ public final class BridgeEngine {
     private static final List<PendingPlacement> PENDING = new ArrayList<>();
     private static final TechniqueStateMachine STATE_MACHINE = new TechniqueStateMachine();
     private static final RecoveryStateMachine RECOVERY = new RecoveryStateMachine();
+    private static final CycleEvaluator CYCLE_EVALUATOR = new CycleEvaluator();
 
     private static boolean active;
+    private static boolean lastCycleRollback;
     private static int ticks;
     private static int placementAttempts;
     private static int confirmedPlacements;
@@ -30,6 +32,7 @@ public final class BridgeEngine {
     private static String lastStopReason = "-";
     private static String currentServerId = "unknown";
     private static String currentServerLabel = "Unknown";
+    private static BridgeCycleResult lastCycle = BridgeCycleResult.of(0, 0, 0, 0.0D, 5, 1.0D);
 
     private BridgeEngine() {}
 
@@ -47,6 +50,8 @@ public final class BridgeEngine {
     public static double placementReliability() { return STATE_MACHINE.lastSnapshot().reliability(); }
     public static double cycleProgress() { return STATE_MACHINE.lastSnapshot().cycleProgress(); }
     public static String serverLabel() { return currentServerLabel; }
+    public static BridgeCycleResult lastCycle() { return lastCycle; }
+    public static boolean lastCycleRollback() { return lastCycleRollback; }
 
     public static double averageConfirmationTicks() {
         return confirmationAgeSamples == 0 ? 0.0D : confirmationAgeTotal / (double) confirmationAgeSamples;
@@ -56,10 +61,19 @@ public final class BridgeEngine {
         return LearningEngine.profile(currentServerId, BridgeConfig.get().technique());
     }
 
+    public static NetworkCondition networkCondition() {
+        return LearningEngine.networkCondition(
+            currentServerId,
+            BridgeConfig.get().technique(),
+            BridgeConfig.get().confirmationTicks()
+        );
+    }
+
     public static void start(Minecraft minecraft) {
         if (active || minecraft.player == null) return;
         LocalPlayer player = minecraft.player;
         active = true;
+        lastCycleRollback = false;
         ticks = 0;
         placementAttempts = 0;
         confirmedPlacements = 0;
@@ -72,6 +86,8 @@ public final class BridgeEngine {
         PENDING.clear();
         STATE_MACHINE.reset();
         RECOVERY.clear();
+        CYCLE_EVALUATOR.reset(0, 0, 0);
+        lastCycle = BridgeCycleResult.of(0, 0, 0, 0.0D, 5, 1.0D);
         originalSlot = player.getInventory().getSelectedSlot();
         startYaw = player.getYRot();
         startPitch = player.getXRot();
@@ -162,6 +178,8 @@ public final class BridgeEngine {
             config.confirmationTicks()
         );
 
+        evaluateCycle(config, technique, state);
+
         double[] move = movementVector(technique.movementStyle(), startYaw, state.strafeSign());
         RotationEngine.tick(player, technique, tuning, state, startYaw, startPitch);
         applyWorldMovement(minecraft, player, technique, move);
@@ -198,8 +216,40 @@ public final class BridgeEngine {
         }
     }
 
+    private static void evaluateCycle(
+        BridgeConfig config,
+        BridgeTechnique technique,
+        TechniqueStateMachine.Snapshot state
+    ) {
+        BridgeCycleResult result = CYCLE_EVALUATOR.tick(
+            state,
+            confirmedPlacements,
+            failedPlacements,
+            recoveryAttempts,
+            averageConfirmationTicks(),
+            config.confirmationTicks(),
+            placementReliability()
+        );
+        if (result == null) return;
+        lastCycle = result;
+        lastCycleRollback = false;
+
+        if (config.trainingMode()) {
+            TrainingSession.record(result);
+            return;
+        }
+
+        lastCycleRollback = LearningEngine.recordCycle(
+            currentServerId,
+            technique,
+            result,
+            config.autoLearning()
+        );
+    }
+
     private static void updatePending(Minecraft minecraft, BridgeConfig config, BridgeTechnique technique) {
         Iterator<PendingPlacement> iterator = PENDING.iterator();
+        boolean learningEnabled = config.autoLearning() && !config.trainingMode();
 
         while (iterator.hasNext()) {
             PendingPlacement pending = iterator.next();
@@ -215,7 +265,7 @@ public final class BridgeEngine {
                     pending.age,
                     config.confirmationTicks(),
                     recovered,
-                    config.autoLearning()
+                    learningEnabled
                 );
                 RECOVERY.confirmed(pending.target);
                 iterator.remove();
@@ -240,7 +290,7 @@ public final class BridgeEngine {
 
             failedPlacements++;
             consecutiveFailures++;
-            LearningEngine.recordFailure(currentServerId, technique, config.autoLearning());
+            LearningEngine.recordFailure(currentServerId, technique, learningEnabled);
             RECOVERY.cancel(pending.target);
             iterator.remove();
         }

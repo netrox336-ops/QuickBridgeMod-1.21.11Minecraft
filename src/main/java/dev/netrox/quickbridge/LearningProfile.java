@@ -5,29 +5,59 @@ public final class LearningProfile {
     private long successes;
     private long failures;
     private long recoveredSuccesses;
+    private long cycles;
+    private long successfulCycles;
+    private long rollbacks;
     private double ackEma;
+    private double cycleQualityEma;
+    private double bestCycleQuality;
     private double cycleAdjustment;
     private double leadAdjustment;
     private double rotationAdjustment;
     private double cadenceAdjustment;
 
+    private long checkpointCycle;
+    private double checkpointQuality;
+    private double checkpointCycleAdjustment;
+    private double checkpointLeadAdjustment;
+    private double checkpointRotationAdjustment;
+    private double checkpointCadenceAdjustment;
+    private int regressionStreak;
+
     public long samples() { return samples; }
     public long successes() { return successes; }
     public long failures() { return failures; }
     public long recoveredSuccesses() { return recoveredSuccesses; }
+    public long cycles() { return cycles; }
+    public long successfulCycles() { return successfulCycles; }
+    public long rollbacks() { return rollbacks; }
     public double ackEma() { return ackEma; }
+    public double cycleQualityEma() { return cycleQualityEma; }
+    public double bestCycleQuality() { return bestCycleQuality; }
     public double cycleAdjustment() { return cycleAdjustment; }
     public double leadAdjustment() { return leadAdjustment; }
     public double rotationAdjustment() { return rotationAdjustment; }
     public double cadenceAdjustment() { return cadenceAdjustment; }
+    public long checkpointCycle() { return checkpointCycle; }
+    public double checkpointQuality() { return checkpointQuality; }
+    public double checkpointCycleAdjustment() { return checkpointCycleAdjustment; }
+    public double checkpointLeadAdjustment() { return checkpointLeadAdjustment; }
+    public double checkpointRotationAdjustment() { return checkpointRotationAdjustment; }
+    public double checkpointCadenceAdjustment() { return checkpointCadenceAdjustment; }
 
     public double reliability() {
         long total = successes + failures;
         return total == 0L ? 1.0D : successes / (double) total;
     }
 
+    public double cycleSuccessRate() {
+        return cycles == 0L ? 1.0D : successfulCycles / (double) cycles;
+    }
+
     public double confidence() {
-        return clamp(samples / 60.0D, 0.0D, 1.0D);
+        double placementConfidence = clamp(samples / 60.0D, 0.0D, 1.0D);
+        double cycleConfidence = clamp(cycles / 24.0D, 0.0D, 1.0D);
+        return placementConfidence * 0.55D + cycleConfidence * 0.45D;
     }
 
     public void observeSuccess(int confirmationAge, int confirmationBudget, boolean recovered) {
@@ -38,17 +68,16 @@ public final class LearningProfile {
 
         double budget = Math.max(1.0D, confirmationBudget);
         double ackRatio = confirmationAge / budget;
-
         if (recovered) {
-            cadenceAdjustment -= 0.0035D;
-            cycleAdjustment += 0.0025D;
-            leadAdjustment -= 0.0015D;
-        } else if (ackRatio <= 0.45D && reliability() >= 0.96D) {
-            cadenceAdjustment += 0.0018D;
-            cycleAdjustment -= 0.0010D;
-        } else if (ackRatio >= 0.80D) {
             cadenceAdjustment -= 0.0025D;
             cycleAdjustment += 0.0018D;
+            leadAdjustment -= 0.0010D;
+        } else if (ackRatio <= 0.45D && reliability() >= 0.96D) {
+            cadenceAdjustment += 0.0012D;
+            cycleAdjustment -= 0.0008D;
+        } else if (ackRatio >= 0.80D) {
+            cadenceAdjustment -= 0.0018D;
+            cycleAdjustment += 0.0012D;
         }
         clampAdjustments();
     }
@@ -56,10 +85,74 @@ public final class LearningProfile {
     public void observeFailure(boolean complexRotation) {
         samples++;
         failures++;
-        cadenceAdjustment -= 0.010D;
-        cycleAdjustment += 0.008D;
-        leadAdjustment -= 0.004D;
-        if (complexRotation) rotationAdjustment += 0.003D;
+        cadenceAdjustment -= 0.007D;
+        cycleAdjustment += 0.005D;
+        leadAdjustment -= 0.003D;
+        if (complexRotation) rotationAdjustment += 0.002D;
+        clampAdjustments();
+    }
+
+    public boolean observeCycle(BridgeCycleResult result, boolean complexRotation) {
+        if (result == null) return false;
+        cycles++;
+        if (result.successful()) successfulCycles++;
+        cycleQualityEma = cycles == 1L
+            ? result.quality()
+            : cycleQualityEma * 0.82D + result.quality() * 0.18D;
+        bestCycleQuality = Math.max(bestCycleQuality, cycleQualityEma);
+
+        double weight = result.networkCondition().learningWeight();
+        if (result.successful()) {
+            regressionStreak = Math.max(0, regressionStreak - 1);
+            if (result.quality() >= 0.82D && result.networkCondition() == NetworkCondition.STABLE) {
+                cadenceAdjustment += 0.0022D * weight;
+                cycleAdjustment -= 0.0014D * weight;
+                if (complexRotation) rotationAdjustment -= 0.0007D;
+            }
+        } else {
+            regressionStreak++;
+            cadenceAdjustment -= 0.0055D * weight;
+            cycleAdjustment += 0.0040D * weight;
+            leadAdjustment -= 0.0022D * weight;
+            if (complexRotation) rotationAdjustment += 0.0015D * weight;
+        }
+        clampAdjustments();
+
+        if (shouldCheckpoint()) saveCheckpoint();
+        if (shouldRollback()) {
+            rollbackToCheckpoint();
+            return true;
+        }
+        return false;
+    }
+
+    private boolean shouldCheckpoint() {
+        if (cycles < 6L || cycles - checkpointCycle < 6L) return false;
+        return cycleQualityEma >= 0.72D && cycleQualityEma >= checkpointQuality - 0.015D;
+    }
+
+    private void saveCheckpoint() {
+        checkpointCycle = cycles;
+        checkpointQuality = cycleQualityEma;
+        checkpointCycleAdjustment = cycleAdjustment;
+        checkpointLeadAdjustment = leadAdjustment;
+        checkpointRotationAdjustment = rotationAdjustment;
+        checkpointCadenceAdjustment = cadenceAdjustment;
+        regressionStreak = 0;
+    }
+
+    private boolean shouldRollback() {
+        if (checkpointCycle <= 0L || cycles - checkpointCycle < 3L) return false;
+        return regressionStreak >= 3 && cycleQualityEma < checkpointQuality - 0.10D;
+    }
+
+    private void rollbackToCheckpoint() {
+        cycleAdjustment = checkpointCycleAdjustment;
+        leadAdjustment = checkpointLeadAdjustment;
+        rotationAdjustment = checkpointRotationAdjustment;
+        cadenceAdjustment = checkpointCadenceAdjustment - 0.004D;
+        rollbacks++;
+        regressionStreak = 0;
         clampAdjustments();
     }
 
@@ -88,7 +181,18 @@ public final class LearningProfile {
         double cycleAdjustment,
         double leadAdjustment,
         double rotationAdjustment,
-        double cadenceAdjustment
+        double cadenceAdjustment,
+        long cycles,
+        long successfulCycles,
+        long rollbacks,
+        double cycleQualityEma,
+        double bestCycleQuality,
+        long checkpointCycle,
+        double checkpointQuality,
+        double checkpointCycleAdjustment,
+        double checkpointLeadAdjustment,
+        double checkpointRotationAdjustment,
+        double checkpointCadenceAdjustment
     ) {
         this.samples = Math.max(0L, samples);
         this.successes = Math.max(0L, successes);
@@ -99,6 +203,17 @@ public final class LearningProfile {
         this.leadAdjustment = leadAdjustment;
         this.rotationAdjustment = rotationAdjustment;
         this.cadenceAdjustment = cadenceAdjustment;
+        this.cycles = Math.max(0L, cycles);
+        this.successfulCycles = Math.max(0L, successfulCycles);
+        this.rollbacks = Math.max(0L, rollbacks);
+        this.cycleQualityEma = clamp(cycleQualityEma, 0.0D, 1.0D);
+        this.bestCycleQuality = clamp(bestCycleQuality, 0.0D, 1.0D);
+        this.checkpointCycle = Math.max(0L, checkpointCycle);
+        this.checkpointQuality = clamp(checkpointQuality, 0.0D, 1.0D);
+        this.checkpointCycleAdjustment = checkpointCycleAdjustment;
+        this.checkpointLeadAdjustment = checkpointLeadAdjustment;
+        this.checkpointRotationAdjustment = checkpointRotationAdjustment;
+        this.checkpointCadenceAdjustment = checkpointCadenceAdjustment;
         clampAdjustments();
     }
 

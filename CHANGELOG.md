@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.5.0 — 2026-08-22
+
+Пятая версия QuickBridge переводит обучение с оценки отдельных placements на оценку целых bridge-циклов и добавляет автоматический откат неудачных learned-параметров.
+
+### Добавлено
+- Cycle Learning: confirmed / failed / recovery учитываются на уровне полного state-machine cycle;
+- quality score и success-rate целых циклов;
+- Network Condition `STABLE / DELAYED / UNSTABLE` по фактическому ACK, reliability и recovery-rate;
+- Learning Checkpoints для удачных learned-состояний;
+- Auto Rollback после устойчивого ухудшения качества относительно checkpoint;
+- сохранение cycle statistics, best quality, checkpoint и rollback counter;
+- Training Mode с отдельной временной статистикой без записи в Server Learning;
+- HUD-метрики cycle quality, network condition, rollback и training session;
+- расширенный экран статистики обучения.
+
+### Изменено
+- confidence теперь учитывает и placement samples, и количество полноценных cycles;
+- скорость обучения уменьшается при нестабильных серверных подтверждениях;
+- placement-learning в Training Mode полностью отключён;
+- Server Learning Store расширен с обратной совместимостью со старыми learning-файлами.
+
 ## 0.4.0 — 2026-08-22
 
 Четвёртая версия QuickBridge добавляет постоянное обучение профилей по конкретным серверам и отдельную recovery state machine.
