@@ -23,6 +23,8 @@ public final class BridgeConfig {
     private boolean autoLearning = true;
     private boolean learningHud = true;
     private boolean trainingMode;
+    private boolean networkProfiles = true;
+    private boolean networkGuard = true;
     private boolean autoSelectBlocks = true;
     private boolean stopOnFall = true;
     private boolean stopOnGui = true;
@@ -65,6 +67,8 @@ public final class BridgeConfig {
             autoLearning = Boolean.parseBoolean(p.getProperty("autoLearning", "true"));
             learningHud = Boolean.parseBoolean(p.getProperty("learningHud", "true"));
             trainingMode = Boolean.parseBoolean(p.getProperty("trainingMode", "false"));
+            networkProfiles = Boolean.parseBoolean(p.getProperty("networkProfiles", "true"));
+            networkGuard = Boolean.parseBoolean(p.getProperty("networkGuard", "true"));
             autoSelectBlocks = Boolean.parseBoolean(p.getProperty("autoSelectBlocks", "true"));
             stopOnFall = Boolean.parseBoolean(p.getProperty("stopOnFall", "true"));
             stopOnGui = Boolean.parseBoolean(p.getProperty("stopOnGui", "true"));
@@ -100,6 +104,8 @@ public final class BridgeConfig {
         p.setProperty("autoLearning", Boolean.toString(autoLearning));
         p.setProperty("learningHud", Boolean.toString(learningHud));
         p.setProperty("trainingMode", Boolean.toString(trainingMode));
+        p.setProperty("networkProfiles", Boolean.toString(networkProfiles));
+        p.setProperty("networkGuard", Boolean.toString(networkGuard));
         p.setProperty("autoSelectBlocks", Boolean.toString(autoSelectBlocks));
         p.setProperty("stopOnFall", Boolean.toString(stopOnFall));
         p.setProperty("stopOnGui", Boolean.toString(stopOnGui));
@@ -126,7 +132,7 @@ public final class BridgeConfig {
         try {
             Files.createDirectories(file.getParent());
             try (OutputStream output = Files.newOutputStream(file)) {
-                p.store(output, "QuickBridge 0.5.0");
+                p.store(output, "QuickBridge 0.6.0");
             }
         } catch (IOException ignored) {}
     }
@@ -169,6 +175,10 @@ public final class BridgeConfig {
     public void toggleLearningHud() { learningHud = !learningHud; save(); }
     public boolean trainingMode() { return trainingMode; }
     public void toggleTrainingMode() { trainingMode = !trainingMode; TrainingSession.reset(); save(); }
+    public boolean networkProfiles() { return networkProfiles; }
+    public void toggleNetworkProfiles() { networkProfiles = !networkProfiles; save(); }
+    public boolean networkGuard() { return networkGuard; }
+    public void toggleNetworkGuard() { networkGuard = !networkGuard; save(); }
     public boolean autoSelectBlocks() { return autoSelectBlocks; }
     public void toggleAutoSelectBlocks() { autoSelectBlocks = !autoSelectBlocks; save(); }
     public boolean stopOnFall() { return stopOnFall; }
