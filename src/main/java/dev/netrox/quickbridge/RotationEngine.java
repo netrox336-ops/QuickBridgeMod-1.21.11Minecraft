@@ -24,7 +24,13 @@ public final class RotationEngine {
         float startYaw,
         float startPitch
     ) {
-        if (player == null || technique.rotationMode() == RotationMode.NONE) return;
+        if (player == null) return;
+
+        TechniqueExecutionProfile execution = TechniqueExecutionProfile.forTechnique(technique);
+        if (technique.rotationMode() == RotationMode.NONE) {
+            ExecutionDiagnostics.reportRotation(0.0D, 0.0D, execution.yawTolerance(), execution.pitchTolerance());
+            return;
+        }
 
         float desiredYaw = startYaw;
         float desiredPitch = startPitch;
@@ -57,13 +63,25 @@ public final class RotationEngine {
                 desiredPitch = technique.placementPitch();
             }
             case NONE -> {
+                ExecutionDiagnostics.reportRotation(0.0D, 0.0D, execution.yawTolerance(), execution.pitchTolerance());
                 return;
             }
         }
 
         float rotationStep = Math.max(4.0F, technique.rotationStep() * tuning.rotationScale());
-        player.setYRot(approachAngle(player.getYRot(), desiredYaw, rotationStep));
-        player.setXRot(approachLinear(player.getXRot(), desiredPitch, Math.max(4.0F, rotationStep * 0.72F)));
+        float nextYaw = approachAngle(player.getYRot(), desiredYaw, rotationStep);
+        float nextPitch = approachLinear(player.getXRot(), desiredPitch, Math.max(4.0F, rotationStep * 0.72F));
+        player.setYRot(nextYaw);
+        player.setXRot(nextPitch);
+
+        double yawError = Math.abs(wrapDegrees(desiredYaw - nextYaw));
+        double pitchError = Math.abs(desiredPitch - nextPitch);
+        ExecutionDiagnostics.reportRotation(
+            yawError,
+            pitchError,
+            execution.yawTolerance(),
+            execution.pitchTolerance()
+        );
     }
 
     public static void restore(LocalPlayer player) {
