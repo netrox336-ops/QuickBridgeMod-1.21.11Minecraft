@@ -38,6 +38,12 @@ public final class LearningProfile {
     public double leadAdjustment() { return leadAdjustment; }
     public double rotationAdjustment() { return rotationAdjustment; }
     public double cadenceAdjustment() { return cadenceAdjustment; }
+    public long checkpointCycle() { return checkpointCycle; }
+    public double checkpointQuality() { return checkpointQuality; }
+    public double checkpointCycleAdjustment() { return checkpointCycleAdjustment; }
+    public double checkpointLeadAdjustment() { return checkpointLeadAdjustment; }
+    public double checkpointRotationAdjustment() { return checkpointRotationAdjustment; }
+    public double checkpointCadenceAdjustment() { return checkpointCadenceAdjustment; }
 
     public double reliability() {
         long total = successes + failures;
