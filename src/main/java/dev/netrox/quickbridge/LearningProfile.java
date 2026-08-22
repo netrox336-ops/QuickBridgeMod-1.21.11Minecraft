@@ -162,7 +162,11 @@ public final class LearningProfile {
     }
 
     public TechniqueTuning applyTo(TechniqueTuning manual) {
-        double weight = confidence();
+        return applyTo(manual, 1.0D);
+    }
+
+    public TechniqueTuning applyTo(TechniqueTuning manual, double weightScale) {
+        double weight = confidence() * clamp(weightScale, 0.0D, 1.0D);
         if (weight <= 0.0D) return manual;
         return new TechniqueTuning(
             manual.cycleScale() + cycleAdjustment * weight,
