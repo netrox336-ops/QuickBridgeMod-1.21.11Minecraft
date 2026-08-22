@@ -23,6 +23,7 @@ public final class ExecutionDiagnostics {
         placementReady = true;
         blockedPlacements = 0L;
         allowedPlacements = 0L;
+        phaseResyncs = 0L;
         resyncTechnique = null;
     }
 
