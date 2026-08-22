@@ -13,6 +13,7 @@ public final class BridgeEngine {
     private static final TechniqueStateMachine STATE_MACHINE = new TechniqueStateMachine();
     private static final RecoveryStateMachine RECOVERY = new RecoveryStateMachine();
     private static final CycleEvaluator CYCLE_EVALUATOR = new CycleEvaluator();
+    private static final NetworkProfileSelector NETWORK_SELECTOR = new NetworkProfileSelector();
 
     private static boolean active;
     private static boolean lastCycleRollback;
@@ -52,6 +53,13 @@ public final class BridgeEngine {
     public static String serverLabel() { return currentServerLabel; }
     public static BridgeCycleResult lastCycle() { return lastCycle; }
     public static boolean lastCycleRollback() { return lastCycleRollback; }
+    public static NetworkCondition activeNetworkCondition() { return NETWORK_SELECTOR.active(); }
+    public static NetworkCondition previousNetworkCondition() { return NETWORK_SELECTOR.previous(); }
+    public static NetworkCondition candidateNetworkCondition() { return NETWORK_SELECTOR.candidate(); }
+    public static int networkCandidateCycles() { return NETWORK_SELECTOR.candidateCycles(); }
+    public static int networkSwitches() { return NETWORK_SELECTOR.switches(); }
+    public static double networkBlend() { return NETWORK_SELECTOR.blend(); }
+    public static boolean networkTransitioning() { return NETWORK_SELECTOR.transitioning(); }
 
     public static double averageConfirmationTicks() {
         return confirmationAgeSamples == 0 ? 0.0D : confirmationAgeTotal / (double) confirmationAgeSamples;
@@ -61,12 +69,16 @@ public final class BridgeEngine {
         return LearningEngine.profile(currentServerId, BridgeConfig.get().technique());
     }
 
-    public static NetworkCondition networkCondition() {
-        return LearningEngine.networkCondition(
+    public static LearningProfile conditionLearningProfile() {
+        return LearningEngine.conditionProfile(
             currentServerId,
             BridgeConfig.get().technique(),
-            BridgeConfig.get().confirmationTicks()
+            NETWORK_SELECTOR.active()
         );
+    }
+
+    public static NetworkCondition networkCondition() {
+        return NETWORK_SELECTOR.active();
     }
 
     public static void start(Minecraft minecraft) {
@@ -93,6 +105,12 @@ public final class BridgeEngine {
         startPitch = player.getXRot();
         currentServerId = ServerContext.id(minecraft);
         currentServerLabel = ServerContext.label(minecraft);
+        NetworkCondition initial = LearningEngine.networkCondition(
+            currentServerId,
+            BridgeConfig.get().technique(),
+            BridgeConfig.get().confirmationTicks()
+        );
+        NETWORK_SELECTOR.reset(initial);
         phase = "RUN";
         lastStopReason = "-";
         RotationEngine.begin(player);
@@ -145,6 +163,7 @@ public final class BridgeEngine {
             return;
         }
 
+        NETWORK_SELECTOR.tick();
         BridgeTechnique technique = config.technique();
         updatePending(minecraft, config, technique);
         if (!active) return;
@@ -166,7 +185,14 @@ public final class BridgeEngine {
         }
 
         ticks++;
-        TechniqueTuning tuning = LearningEngine.effectiveTuning(config, currentServerId, technique);
+        TechniqueTuning tuning = LearningEngine.effectiveTuning(
+            config,
+            currentServerId,
+            technique,
+            NETWORK_SELECTOR.active(),
+            NETWORK_SELECTOR.previous(),
+            NETWORK_SELECTOR.blend()
+        );
         TechniqueStateMachine.Snapshot state = STATE_MACHINE.tick(
             player,
             technique,
@@ -233,6 +259,7 @@ public final class BridgeEngine {
         if (result == null) return;
         lastCycle = result;
         lastCycleRollback = false;
+        NETWORK_SELECTOR.observe(result.networkCondition());
 
         if (config.trainingMode()) {
             TrainingSession.record(result);
@@ -250,6 +277,7 @@ public final class BridgeEngine {
     private static void updatePending(Minecraft minecraft, BridgeConfig config, BridgeTechnique technique) {
         Iterator<PendingPlacement> iterator = PENDING.iterator();
         boolean learningEnabled = config.autoLearning() && !config.trainingMode();
+        NetworkCondition activeCondition = NETWORK_SELECTOR.active();
 
         while (iterator.hasNext()) {
             PendingPlacement pending = iterator.next();
@@ -262,6 +290,7 @@ public final class BridgeEngine {
                 LearningEngine.recordSuccess(
                     currentServerId,
                     technique,
+                    activeCondition,
                     pending.age,
                     config.confirmationTicks(),
                     recovered,
@@ -290,7 +319,12 @@ public final class BridgeEngine {
 
             failedPlacements++;
             consecutiveFailures++;
-            LearningEngine.recordFailure(currentServerId, technique, learningEnabled);
+            LearningEngine.recordFailure(
+                currentServerId,
+                technique,
+                activeCondition,
+                learningEnabled
+            );
             RECOVERY.cancel(pending.target);
             iterator.remove();
         }
