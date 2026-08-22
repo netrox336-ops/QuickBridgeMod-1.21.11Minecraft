@@ -18,12 +18,12 @@ public final class QuickBridgeHudRenderer {
         BridgeTechnique technique = config.technique();
         boolean diagnostics = config.diagnosticHud();
         boolean learning = diagnostics && config.learningHud();
-        int width = diagnostics ? 294 : Math.max(158, minecraft.font.width(technique.displayName()) + 52);
-        int height = learning ? 98 : diagnostics ? 70 : 45;
+        int width = diagnostics ? 308 : Math.max(158, minecraft.font.width(technique.displayName()) + 52);
+        int height = learning ? 112 : diagnostics ? 70 : 45;
 
         graphics.fill(x, y, x + width, y + height, 0xB0101010);
         graphics.fill(x, y, x + 3, y + height, BridgeEngine.active() ? 0xFF55FF55 : 0xFF777777);
-        graphics.drawString(minecraft.font, "QUICKBRIDGE 0.5", x + 8, y + 6, 0xFFFFFFFF, true);
+        graphics.drawString(minecraft.font, "QUICKBRIDGE 0.6", x + 8, y + 6, 0xFFFFFFFF, true);
         graphics.drawString(minecraft.font,
             technique.displayName() + (technique.experimental() ? " [EXP]" : "") + (config.trainingMode() ? " [TRAIN]" : ""),
             x + 8, y + 18, config.trainingMode() ? 0xFFFFD166 : technique.experimental() ? 0xFFFFAA00 : 0xFFE6E6E6, true);
@@ -49,22 +49,37 @@ public final class QuickBridgeHudRenderer {
 
         if (learning) {
             BridgeCycleResult cycle = BridgeEngine.lastCycle();
-            String cycleLine = String.format(Locale.ROOT, "Cycle %.0f%% • %s%s",
+            String cycleLine = String.format(Locale.ROOT, "Cycle %.0f%% • observed %s%s",
                 cycle.quality() * 100.0D, cycle.networkCondition().displayName(),
                 BridgeEngine.lastCycleRollback() ? " • ROLLBACK" : "");
             graphics.drawString(minecraft.font, cycleLine, x + 8, y + 68, 0xFFFFD28A, true);
 
+            String profileLine;
+            if (BridgeEngine.networkTransitioning()) {
+                profileLine = String.format(Locale.ROOT, "Profile %s → %s • blend %.0f%% • switches %d",
+                    BridgeEngine.previousNetworkCondition().displayName(),
+                    BridgeEngine.activeNetworkCondition().displayName(),
+                    BridgeEngine.networkBlend() * 100.0D,
+                    BridgeEngine.networkSwitches());
+            } else {
+                profileLine = "Profile " + BridgeEngine.activeNetworkCondition().displayName()
+                    + " • candidate " + BridgeEngine.candidateNetworkCondition().displayName()
+                    + " (" + BridgeEngine.networkCandidateCycles() + ") • switches " + BridgeEngine.networkSwitches();
+            }
+            graphics.drawString(minecraft.font, profileLine, x + 8, y + 82,
+                config.networkProfiles() ? 0xFFB9C7FF : 0xFF888888, true);
+
             if (config.trainingMode()) {
                 String training = String.format(Locale.ROOT, "Training %d cycles • %.0f%% success • Q %.0f%%",
                     TrainingSession.cycles(), TrainingSession.successRate() * 100.0D, TrainingSession.qualityEma() * 100.0D);
-                graphics.drawString(minecraft.font, training, x + 8, y + 82, 0xFFFFD166, true);
+                graphics.drawString(minecraft.font, training, x + 8, y + 96, 0xFFFFD166, true);
             } else {
-                LearningProfile profile = BridgeEngine.learningProfile();
-                String learned = String.format(Locale.ROOT, "Learn %d/%d cycles • Q %.0f%% • Conf %.0f%% • RB %d",
+                LearningProfile profile = BridgeEngine.conditionLearningProfile();
+                String learned = String.format(Locale.ROOT, "Bucket %d/%d cycles • Q %.0f%% • Conf %.0f%% • RB %d",
                     profile.successfulCycles(), profile.cycles(), profile.cycleQualityEma() * 100.0D,
                     profile.confidence() * 100.0D, profile.rollbacks());
-                graphics.drawString(minecraft.font, learned, x + 8, y + 82,
-                    config.autoLearning() ? 0xFFB8E6B8 : 0xFF888888, true);
+                graphics.drawString(minecraft.font, learned, x + 8, y + 96,
+                    config.autoLearning() && config.networkProfiles() ? 0xFFB8E6B8 : 0xFF888888, true);
             }
         }
     }
