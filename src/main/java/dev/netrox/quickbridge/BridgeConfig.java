@@ -25,6 +25,7 @@ public final class BridgeConfig {
     private boolean trainingMode;
     private boolean networkProfiles = true;
     private boolean networkGuard = true;
+    private boolean executionGuard = true;
     private boolean autoSelectBlocks = true;
     private boolean stopOnFall = true;
     private boolean stopOnGui = true;
@@ -69,6 +70,7 @@ public final class BridgeConfig {
             trainingMode = Boolean.parseBoolean(p.getProperty("trainingMode", "false"));
             networkProfiles = Boolean.parseBoolean(p.getProperty("networkProfiles", "true"));
             networkGuard = Boolean.parseBoolean(p.getProperty("networkGuard", "true"));
+            executionGuard = Boolean.parseBoolean(p.getProperty("executionGuard", "true"));
             autoSelectBlocks = Boolean.parseBoolean(p.getProperty("autoSelectBlocks", "true"));
             stopOnFall = Boolean.parseBoolean(p.getProperty("stopOnFall", "true"));
             stopOnGui = Boolean.parseBoolean(p.getProperty("stopOnGui", "true"));
@@ -106,6 +108,7 @@ public final class BridgeConfig {
         p.setProperty("trainingMode", Boolean.toString(trainingMode));
         p.setProperty("networkProfiles", Boolean.toString(networkProfiles));
         p.setProperty("networkGuard", Boolean.toString(networkGuard));
+        p.setProperty("executionGuard", Boolean.toString(executionGuard));
         p.setProperty("autoSelectBlocks", Boolean.toString(autoSelectBlocks));
         p.setProperty("stopOnFall", Boolean.toString(stopOnFall));
         p.setProperty("stopOnGui", Boolean.toString(stopOnGui));
@@ -132,7 +135,7 @@ public final class BridgeConfig {
         try {
             Files.createDirectories(file.getParent());
             try (OutputStream output = Files.newOutputStream(file)) {
-                p.store(output, "QuickBridge 0.6.0");
+                p.store(output, "QuickBridge 0.7.0");
             }
         } catch (IOException ignored) {}
     }
@@ -179,6 +182,8 @@ public final class BridgeConfig {
     public void toggleNetworkProfiles() { networkProfiles = !networkProfiles; save(); }
     public boolean networkGuard() { return networkGuard; }
     public void toggleNetworkGuard() { networkGuard = !networkGuard; save(); }
+    public boolean executionGuard() { return executionGuard; }
+    public void toggleExecutionGuard() { executionGuard = !executionGuard; save(); }
     public boolean autoSelectBlocks() { return autoSelectBlocks; }
     public void toggleAutoSelectBlocks() { autoSelectBlocks = !autoSelectBlocks; save(); }
     public boolean stopOnFall() { return stopOnFall; }

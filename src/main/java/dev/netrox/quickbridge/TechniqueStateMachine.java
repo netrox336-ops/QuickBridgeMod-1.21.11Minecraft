@@ -13,6 +13,7 @@ public final class TechniqueStateMachine {
         placementAccumulator = 0.0D;
         previousPhase = TechniquePhase.IDLE;
         lastSnapshot = Snapshot.idle();
+        ExecutionDiagnostics.reset();
     }
 
     public Snapshot tick(
@@ -25,6 +26,14 @@ public final class TechniqueStateMachine {
         double averageConfirmationTicks,
         int confirmationBudget
     ) {
+        TechniqueExecutionProfile execution = TechniqueExecutionProfile.forTechnique(technique);
+
+        if (ExecutionDiagnostics.consumePhaseResync(technique)) {
+            cycleProgress = clampProgress(execution.recoveryProgress());
+            placementAccumulator = 0.0D;
+            previousPhase = phaseFor(technique, execution, cycleProgress);
+        }
+
         AdaptiveCadence.Sample cadence = AdaptiveCadence.sample(
             player,
             technique,
@@ -36,18 +45,50 @@ public final class TechniqueStateMachine {
         );
 
         double effectiveCycle = Math.max(2.0D, technique.cycleTicks() * tuning.cycleScale());
-        cycleProgress += cadence.cadenceFactor() / effectiveCycle;
+        TechniquePhase phaseBeforeAdvance = phaseFor(technique, execution, cycleProgress);
+        double phaseRate = execution.progressRate(player, phaseBeforeAdvance);
+        cycleProgress += (cadence.cadenceFactor() / effectiveCycle) * phaseRate;
         if (cycleProgress >= 1.0D) cycleProgress -= Math.floor(cycleProgress);
 
-        TechniquePhase phase = phaseFor(technique, cycleProgress);
+        TechniquePhase phase = phaseFor(technique, execution, cycleProgress);
         int strafeSign = strafeSign(phase, cycleProgress);
         boolean jumpPulse = shouldJump(technique, phase, previousPhase, engineTick);
 
         placementAccumulator += cadence.cadenceFactor();
         double interval = Math.max(1.0D, technique.placeEveryTicks());
         boolean placementPhase = isPlacementPhase(technique, phase);
-        boolean placeNow = placementPhase && placementAccumulator >= interval;
-        if (placeNow) placementAccumulator -= interval;
+        boolean windowOpen = placementPhase && adaptivePlacementWindow(
+            execution,
+            phase,
+            cycleProgress,
+            cadence.speed(),
+            cadence.reliability(),
+            averageConfirmationTicks,
+            confirmationBudget
+        );
+        double motionScore = execution.motionScore(player, phase, cadence.speed());
+
+        boolean guardEnabled = BridgeConfig.get().executionGuard();
+        boolean rotationReady = !guardEnabled
+            || !execution.rotationGate()
+            || ExecutionDiagnostics.rotationAligned();
+        boolean motionReady = !guardEnabled
+            || !execution.motionGate()
+            || motionScore >= 0.54D;
+        boolean placementReady = windowOpen && rotationReady && motionReady;
+
+        boolean placementDue = placementAccumulator >= interval;
+        boolean placeNow = placementDue && placementReady;
+        if (placementDue) {
+            ExecutionDiagnostics.recordPlacementDecision(placeNow);
+            if (placeNow) {
+                placementAccumulator -= interval;
+            } else {
+                placementAccumulator = Math.min(placementAccumulator, interval * 1.35D);
+            }
+        }
+
+        ExecutionDiagnostics.reportExecution(motionScore, windowOpen, placementReady);
 
         previousPhase = phase;
         lastSnapshot = new Snapshot(
@@ -67,29 +108,39 @@ public final class TechniqueStateMachine {
         return lastSnapshot;
     }
 
-    private static TechniquePhase phaseFor(BridgeTechnique technique, double progress) {
+    private static boolean adaptivePlacementWindow(
+        TechniqueExecutionProfile execution,
+        TechniquePhase phase,
+        double progress,
+        double speed,
+        double reliability,
+        double averageConfirmationTicks,
+        int confirmationBudget
+    ) {
+        if (execution.complexPhases() && phase != TechniquePhase.BURST) return false;
+
+        double budget = Math.max(1.0D, confirmationBudget);
+        double ackRatio = averageConfirmationTicks <= 0.0D
+            ? 0.0D
+            : averageConfirmationTicks / budget;
+        double speedLead = Math.max(0.0D, speed - execution.minBurstSpeed()) * 0.11D;
+        double ackLead = Math.max(0.0D, ackRatio - 0.55D) * 0.025D;
+        double lead = clamp(speedLead + ackLead, 0.0D, 0.035D);
+        double lateTrim = clamp((1.0D - reliability) * 0.08D, 0.0D, 0.055D);
+
+        double start = Math.max(0.0D, execution.placementStart() - lead);
+        double end = Math.min(1.0D, execution.placementEnd() - lateTrim);
+        if (end < start + 0.04D) end = Math.min(1.0D, start + 0.04D);
+        return progress >= start && progress <= end;
+    }
+
+    private static TechniquePhase phaseFor(
+        BridgeTechnique technique,
+        TechniqueExecutionProfile execution,
+        double progress
+    ) {
+        if (execution.complexPhases()) return execution.phase(progress);
         return switch (technique) {
-            case TELLY, SPEED_TELLY -> {
-                if (progress < 0.18D) yield TechniquePhase.RUNUP;
-                if (progress < 0.32D) yield TechniquePhase.JUMP;
-                if (progress < 0.52D) yield TechniquePhase.TURN;
-                if (progress < 0.90D) yield TechniquePhase.BURST;
-                yield TechniquePhase.RESET;
-            }
-            case BLINK_BRIDGE -> {
-                if (progress < 0.14D) yield TechniquePhase.RUNUP;
-                if (progress < 0.27D) yield TechniquePhase.JUMP;
-                if (progress < 0.42D) yield TechniquePhase.TURN;
-                if (progress < 0.84D) yield TechniquePhase.BURST;
-                yield TechniquePhase.RESET;
-            }
-            case ANDROMEDA -> {
-                if (progress < 0.18D) yield TechniquePhase.RUNUP;
-                if (progress < 0.30D) yield TechniquePhase.JUMP;
-                if (progress < 0.46D) yield TechniquePhase.TURN;
-                if (progress < 0.92D) yield TechniquePhase.BURST;
-                yield TechniquePhase.RESET;
-            }
             case BREEZILY, WITCHLY, MOONWALK -> progress < 0.50D
                 ? TechniquePhase.STRAFE_A
                 : TechniquePhase.STRAFE_B;
@@ -123,6 +174,16 @@ public final class TechniqueStateMachine {
         if (phase == TechniquePhase.STRAFE_A) return -1;
         if (phase == TechniquePhase.STRAFE_B) return 1;
         return progress < 0.5D ? -1 : 1;
+    }
+
+    private static double clampProgress(double value) {
+        if (value < 0.0D) return 0.0D;
+        if (value >= 1.0D) return 0.999D;
+        return value;
+    }
+
+    private static double clamp(double value, double min, double max) {
+        return Math.max(min, Math.min(max, value));
     }
 
     public record Snapshot(

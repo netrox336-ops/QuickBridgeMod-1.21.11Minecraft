@@ -46,22 +46,22 @@ public final class TechniqueEditorScreen extends Screen {
         addRenderableWidget(Button.builder(
             Component.literal("Сбросить ручной профиль"),
             button -> config.resetTuning(config.technique())
-        ).bounds(center - 154, top + 142, 150, 20).build());
+        ).bounds(center - 154, top + 150, 150, 20).build());
 
         addRenderableWidget(Button.builder(
             Component.literal("Сбросить обучение"),
             button -> LearningEngine.reset(serverId(), config.technique())
-        ).bounds(center + 4, top + 142, 150, 20).build());
+        ).bounds(center + 4, top + 150, 150, 20).build());
 
         addRenderableWidget(Button.builder(
             Component.literal("Статистика обучения"),
             button -> minecraft.setScreen(new LearningStatsScreen(this))
-        ).bounds(center - 154, top + 166, 150, 20).build());
+        ).bounds(center - 154, top + 174, 150, 20).build());
 
         addRenderableWidget(Button.builder(
             Component.literal("Готово"),
             button -> onClose()
-        ).bounds(center + 4, top + 166, 150, 20).build());
+        ).bounds(center + 4, top + 174, 150, 20).build());
     }
 
     private void addPair(int center, int y, Runnable minus, Runnable plus) {
@@ -78,11 +78,12 @@ public final class TechniqueEditorScreen extends Screen {
         TechniqueTuning tuning = config.tuning(config.technique());
         LearningProfile learned = LearningEngine.profile(serverId(), config.technique());
         TechniqueTuning effective = config.autoLearning() ? learned.applyTo(tuning) : tuning;
+        TechniqueExecutionProfile execution = TechniqueExecutionProfile.forTechnique(config.technique());
         int center = width / 2;
         int top = Math.max(28, height / 2 - 108);
 
         graphics.drawCenteredString(font, title, center, 6, 0xFFFFFF);
-        graphics.drawCenteredString(font, Component.literal("Ручной профиль + отдельная коррекция текущего сервера"), center, 18, 0xA0A0A0);
+        graphics.drawCenteredString(font, Component.literal("Manual + learned + execution profile"), center, 18, 0xA0A0A0);
         graphics.drawCenteredString(font, Component.literal("Длина цикла: " + percent(tuning.cycleScale())), center, top + 36, 0xE6E6E6);
         graphics.drawCenteredString(font, Component.literal("Упреждение блока: " + signed(tuning.leadOffset())), center, top + 62, 0xE6E6E6);
         graphics.drawCenteredString(font, Component.literal("Скорость поворота: " + percent(tuning.rotationScale())), center, top + 88, 0xE6E6E6);
@@ -99,6 +100,18 @@ public final class TechniqueEditorScreen extends Screen {
         );
         graphics.drawCenteredString(font, Component.literal(learnedText), center, top + 128, 0x9FD7FF);
 
+        String executionText = String.format(
+            Locale.ROOT,
+            "Execution: window %.0f–%.0f%% • min speed %.3f • yaw ±%.0f° • pitch ±%.0f°",
+            execution.placementStart() * 100.0D,
+            execution.placementEnd() * 100.0D,
+            execution.minBurstSpeed(),
+            execution.yawTolerance(),
+            execution.pitchTolerance()
+        );
+        graphics.drawCenteredString(font, Component.literal(executionText), center, top + 140,
+            config.executionGuard() ? 0xFFFFD28A : 0xFF888888);
+
         String effectiveText = String.format(
             Locale.ROOT,
             "Effective: %.2f • %+.2f • %.2f • %+.2f",
@@ -107,7 +120,7 @@ public final class TechniqueEditorScreen extends Screen {
             effective.rotationScale(),
             effective.cadenceBias()
         );
-        graphics.drawCenteredString(font, Component.literal(effectiveText), center, top + 190, 0xB8E6B8);
+        graphics.drawCenteredString(font, Component.literal(effectiveText), center, top + 202, 0xB8E6B8);
         super.render(graphics, mouseX, mouseY, partialTick);
     }
 

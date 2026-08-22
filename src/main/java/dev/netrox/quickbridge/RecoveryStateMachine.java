@@ -56,7 +56,7 @@ public final class RecoveryStateMachine {
             }
             case RESUME -> {
                 BlockPos resumeTarget = target;
-                if (stageTicks >= resumeTicks()) clear();
+                if (stageTicks >= resumeTicks()) finishResume();
                 yield new Snapshot("RECOVERY RESUME", true, true, false, resumeTarget);
             }
             case IDLE -> Snapshot.idle();
@@ -78,6 +78,16 @@ public final class RecoveryStateMachine {
         target = null;
         technique = null;
         stageTicks = 0;
+    }
+
+    private void finishResume() {
+        BridgeTechnique resumeTechnique = technique;
+        clear();
+        if (resumeTechnique == null) return;
+        TechniqueExecutionProfile profile = TechniqueExecutionProfile.forTechnique(resumeTechnique);
+        if (profile.recoveryProgress() > 0.0D) {
+            ExecutionDiagnostics.requestPhaseResync(resumeTechnique);
+        }
     }
 
     private int holdTicks() {
