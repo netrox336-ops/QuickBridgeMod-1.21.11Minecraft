@@ -1,23 +1,40 @@
-# QuickBridge — профили техник v0.5.0
+# QuickBridge — профили техник v0.7.0
 
-QuickBridge использует единый world-aware runtime, но каждая техника имеет собственный базовый профиль, state-machine поведение, ручную калибровку и — при включённом Auto Learning — отдельную learned-поправку для текущего сервера.
+QuickBridge использует единый world-aware runtime, но каждая техника имеет собственный базовый профиль, state-machine поведение, ручную калибровку, learned-поправки и начиная с v0.7 — отдельный execution profile.
 
 | Профиль | Статус | Movement | Runtime |
 | --- | --- | --- | --- |
 | Ninja | stable | backward | cruise + world edge scan |
 | Diagonal Ninja | stable | diagonal backward | cruise + edge scan |
-| Breezily | stable | alternating backward | STRAFE L / STRAFE R |
-| Witchly | stable | alternating backward | STRAFE L / STRAFE R + yaw oscillation |
+| Breezily | stable | alternating backward | STRAFE L / STRAFE R + execution window |
+| Witchly | stable | alternating backward | STRAFE L / STRAFE R + yaw alignment |
 | God Bridge | stable | backward-right | cruise + jump cadence |
 | Jump God | experimental | backward-right | fast jump cadence |
-| Telly | experimental | forward | RUNUP → JUMP → TURN → BURST → RESET |
-| Speed Telly | experimental | forward | ускоренный Telly state cycle |
+| Telly | experimental | forward | RUNUP → JUMP → TURN → BURST → RESET + execution guard |
+| Speed Telly | experimental | forward | ускоренный Telly cycle + tighter rotation gate |
 | Side Bridge | stable | side-right | world-direction side movement |
 | Time Bridge | experimental | backward | cadence 2t + adaptive correction |
-| Andromeda | experimental | backward-right | RUNUP → JUMP → TURN → BURST → RESET |
-| Blink Bridge | experimental | forward | короткий runup + длинный burst window |
+| Andromeda | experimental | backward-right | RUNUP → JUMP → TURN → BURST → RESET + execution guard |
+| Blink Bridge | experimental | forward | короткий runup + длинный adaptive burst window |
 | Slope Bridging | stable | backward | cruise + jump cadence + edge scan |
-| Moonwalk | experimental | alternating backward | STRAFE L / STRAFE R |
+| Moonwalk | experimental | alternating backward | STRAFE L / STRAFE R + execution window |
+
+## Execution Profiles
+
+В v0.7 сложная техника хранит не только обычный `BridgeTechnique`, но и отдельный `TechniqueExecutionProfile`.
+
+Профиль задаёт:
+
+- границы фаз;
+- базовое начало/конец placement window;
+- минимальную скорость для burst;
+- допустимую ошибку yaw;
+- допустимую ошибку pitch;
+- safe re-entry progress после recovery;
+- необходимость rotation/motion gate;
+- предпочтение airborne burst для Telly-подобных техник.
+
+Это позволяет отделить смысл техники от серверного обучения. Auto Learning может слегка поправлять cycle/lead/cadence, но не меняет базовую последовательность Telly или Andromeda.
 
 ## Technique State Machine
 
@@ -26,90 +43,103 @@ Telly / Speed Telly / Blink / Andromeda используют последова�
 - `RUNUP` — разгон;
 - `JUMP` — импульс прыжка;
 - `TURN` — подготовка камеры;
-- `BURST` — placement window;
+- `BURST` — окно постановки;
 - `RESET` — переход к следующему циклу.
 
-Breezily / Witchly / Moonwalk используют `STRAFE L` и `STRAFE R`, поэтому движение и yaw oscillation синхронизированы одним состоянием.
+Breezily / Witchly / Moonwalk используют `STRAFE L` и `STRAFE R`.
+
+В v0.7 скорость продвижения по фазе может немного замедляться, если сложная техника ещё физически не готова перейти дальше. Например, JUMP-фаза не должна мгновенно проскочить, пока игрок фактически остаётся на земле.
+
+## Execution Guard
+
+Execution Guard проверяет placement непосредственно перед выдачей команды постановки.
+
+Для сложной техники учитываются:
+
+1. правильная state-machine фаза;
+2. adaptive placement window;
+3. motion score;
+4. rotation alignment.
+
+Если placement cadence уже наступил, но guard считает действие преждевременным, попытка не отправляется. Accumulator при этом ограничивается, чтобы после открытия окна мод не выпустил длинную накопленную очередь кликов.
+
+Execution Guard можно отключить в меню.
+
+## Adaptive Placement Window
+
+Базовое окно берётся из execution profile, после чего в небольших пределах корректируется runtime-данными:
+
+- более высокая скорость немного упреждает начало окна;
+- повышенный ACK может добавить небольшую раннюю поправку;
+- плохая placement reliability подрезает поздний край окна.
+
+Коррекция специально ограничена небольшим диапазоном, чтобы адаптация не переписывала саму геометрию техники.
+
+## Rotation Alignment
+
+Rotation Engine теперь после каждого шага сообщает реальную ошибку относительно целевого yaw/pitch.
+
+Для профилей с rotation gate placement считается готовым только когда камера попадает в индивидуальный tolerance выбранной техники. HUD показывает текущие yaw/pitch errors.
+
+## Recovery State Machine и Phase Resync
+
+Если placement не подтверждён за confirmation window, обычная state machine приостанавливается:
+
+`HOLD → REALIGN → RETRY → RESUME`
+
+После завершения `RESUME` v0.7 может запросить phase resync. Для Telly, Speed Telly, Blink, Andromeda и других профилей с safe re-entry progress state machine:
+
+- сбрасывает placement accumulator;
+- возвращается в безопасную точку цикла;
+- продолжает технику уже из синхронизированной фазы.
+
+Это устраняет ситуацию, когда recovery занял несколько тиков, а основной Telly-cycle за это время логически ушёл вперёд.
+
+## Condition-Aware Learning
+
+Сохраняется архитектура v0.6:
+
+- global server baseline;
+- отдельные condition buckets `STABLE / DELAYED / UNSTABLE`;
+- hysteresis при переключении;
+- плавный blend профилей;
+- Network Guard;
+- Learning Checkpoints и Auto Rollback.
+
+Старые learning-файлы остаются совместимыми.
 
 ## Cycle Learning
 
-Начиная с v0.5 QuickBridge оценивает не только отдельные placements, но и полный state-machine cycle. `CycleEvaluator` фиксирует переход через конец цикла и считает:
+`CycleEvaluator` оценивает полный state-machine cycle и учитывает:
 
 - confirmed blocks;
 - failed blocks;
 - recovery attempts;
-- итоговый quality score;
+- quality score;
 - успешность цикла;
-- текущий Network Condition.
+- Network Condition.
 
-Cycle quality используется как более сильный сигнал обучения, чем одиночный placement. Это особенно важно для Telly, Andromeda и других техник, где отдельный блок может быть подтверждён, но весь цикл при этом выполнен плохо.
-
-## Network Condition
-
-Состояние сервера классифицируется как:
-
-- `STABLE`;
-- `DELAYED`;
-- `UNSTABLE`.
-
-Для этого используются наблюдаемые клиентом показатели: ACK блоков, reliability и recovery-rate. При нестабильных подтверждениях вес новых learned-изменений уменьшается.
-
-## Learning Checkpoints и Auto Rollback
-
-После серии качественных циклов текущие learned-параметры сохраняются как checkpoint. Если после него несколько циклов подряд показывают заметное устойчивое ухудшение, профиль автоматически возвращается к последнему checkpoint.
-
-Rollback касается только learned-слоя. Ручная калибровка пользователя не меняется.
+Cycle feedback дополняет placement feedback и используется для server learning.
 
 ## Training Mode
 
-Training Mode запускает обычный Bridge Engine, state machine и recovery, но не пишет новые placement/cycle samples в persistent Server Learning.
+Training Mode запускает обычный Bridge Engine, Execution Guard, state machine и recovery, но не пишет новые samples в persistent Server Learning.
 
-Во время тренировки отдельно считаются:
-
-- количество циклов;
-- success-rate;
-- EMA качества;
-- последнее сетевое состояние.
-
-После выключения режима эта временная статистика может быть сброшена и никак не влияет на профиль сервера.
-
-## Adaptive Cadence
-
-Текущий cadence учитывает:
-
-- горизонтальную скорость игрока;
-- confirmed / failed placements текущего запуска;
-- среднее время подтверждения блока;
-- ручной `cadenceBias`;
-- learned-correction сервера, если Auto Learning включён.
-
-## Server Learning
-
-Статистика хранится отдельно для каждой пары **сервер + техника**. Профиль накапливает placement samples, recovery success, ACK EMA, cycle statistics, quality score, checkpoint и количество rollback.
-
-Ручные настройки в `quickbridge.properties` не перезаписываются. Learning хранится отдельно в `quickbridge-learning.properties`.
-
-## Recovery State Machine
-
-Если placement не подтверждён за confirmation window, обычная state machine временно приостанавливается:
-
-`HOLD → REALIGN → RETRY → RESUME`
-
-Для Telly, Speed Telly, Andromeda и Blink realign/resume более осторожные, чем для обычных профилей.
+Во время тренировки отдельно считаются cycles, success-rate, EMA качества и последнее сетевое состояние.
 
 ## Ручная калибровка
 
 Для каждого профиля отдельно сохраняются:
 
-- `cycleScale` — 70–140%;
-- `leadOffset` — поправка placement target;
-- `rotationScale` — 55–160%;
-- `cadenceBias` — ручная поправка Adaptive Cadence.
+- `cycleScale`;
+- `leadOffset`;
+- `rotationScale`;
+- `cadenceBias`.
 
-Редактор показывает три слоя: manual, learned и effective.
+Редактор v0.7 показывает manual/learned/effective tuning и readonly execution profile выбранной техники.
 
 ## Placement confirmation
 
-Попытка `useItemOn` не считается успехом сама по себе. QuickBridge ждёт фактического появления блока в клиентском мире. Только после этого placement попадает в confirmed statistics.
+Попытка `useItemOn` не считается успехом сама по себе. QuickBridge ждёт фактического появления блока в клиентском мире. Только после этого placement считается confirmed.
 
-`[EXP]` означает необходимость дальнейшей практической калибровки под конкретную физику и задержку сервера. Это не режим обхода античита.
+`[EXP]` означает необходимость практической калибровки под конкретную физику и задержку сервера. Это не режим обхода античита.
