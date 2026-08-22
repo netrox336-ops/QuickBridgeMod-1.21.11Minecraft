@@ -42,6 +42,36 @@ public final class LearningEngine {
         ServerLearningStore.get().markDirty();
     }
 
+    public static boolean recordCycle(
+        String serverId,
+        BridgeTechnique technique,
+        BridgeCycleResult result,
+        boolean enabled
+    ) {
+        if (!enabled || result == null) return false;
+        LearningProfile profile = profile(serverId, technique);
+        boolean rolledBack = profile.observeCycle(result, isComplexRotation(technique));
+        ServerLearningStore.get().markDirty();
+        return rolledBack;
+    }
+
+    public static NetworkCondition networkCondition(
+        String serverId,
+        BridgeTechnique technique,
+        int confirmationBudget
+    ) {
+        LearningProfile profile = profile(serverId, technique);
+        double recoveryRate = profile.successes() == 0L
+            ? 0.0D
+            : profile.recoveredSuccesses() / (double) profile.successes();
+        return NetworkCondition.classify(
+            profile.ackEma(),
+            confirmationBudget,
+            profile.reliability(),
+            recoveryRate
+        );
+    }
+
     public static void flush() {
         ServerLearningStore.get().flush();
     }
