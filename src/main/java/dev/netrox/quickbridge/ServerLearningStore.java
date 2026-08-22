@@ -32,11 +32,30 @@ public final class ServerLearningStore {
 
     public LearningProfile profile(String serverId, BridgeTechnique technique) {
         ensureLoaded();
-        String mapKey = profileKey(serverId, technique);
-        LearningProfile cached = profiles.get(mapKey);
+        String key = globalKey(serverId, technique);
+        LearningProfile cached = profiles.get(key);
         if (cached != null) return cached;
+        LearningProfile profile = loadProfile(globalPrefix(serverId, technique));
+        profiles.put(key, profile);
+        return profile;
+    }
 
-        String prefix = propertyPrefix(serverId, technique);
+    public LearningProfile conditionProfile(
+        String serverId,
+        BridgeTechnique technique,
+        NetworkCondition condition
+    ) {
+        ensureLoaded();
+        NetworkCondition safeCondition = condition == null ? NetworkCondition.STABLE : condition;
+        String key = conditionKey(serverId, technique, safeCondition);
+        LearningProfile cached = profiles.get(key);
+        if (cached != null) return cached;
+        LearningProfile profile = loadProfile(conditionPrefix(serverId, technique, safeCondition));
+        profiles.put(key, profile);
+        return profile;
+    }
+
+    private LearningProfile loadProfile(String prefix) {
         LearningProfile profile = new LearningProfile();
         profile.restore(
             parseLong(persisted.getProperty(prefix + "samples"), 0L),
@@ -60,7 +79,6 @@ public final class ServerLearningStore {
             parseDouble(persisted.getProperty(prefix + "checkpointRotationAdjustment"), 0.0D),
             parseDouble(persisted.getProperty(prefix + "checkpointCadenceAdjustment"), 0.0D)
         );
-        profiles.put(mapKey, profile);
         return profile;
     }
 
@@ -70,8 +88,24 @@ public final class ServerLearningStore {
 
     public void reset(String serverId, BridgeTechnique technique) {
         ensureLoaded();
-        profiles.remove(profileKey(serverId, technique));
-        removePrefix(propertyPrefix(serverId, technique));
+        String encoded = encoded(serverId);
+        String techniqueName = technique.name();
+        profiles.keySet().removeIf(key -> key.startsWith(encoded + "|" + techniqueName));
+        removePrefix(globalPrefix(serverId, technique));
+        removePrefix("condition." + encoded + "." + techniqueName + ".");
+        dirty = true;
+        flush();
+    }
+
+    public void resetCondition(
+        String serverId,
+        BridgeTechnique technique,
+        NetworkCondition condition
+    ) {
+        ensureLoaded();
+        NetworkCondition safeCondition = condition == null ? NetworkCondition.STABLE : condition;
+        profiles.remove(conditionKey(serverId, technique, safeCondition));
+        removePrefix(conditionPrefix(serverId, technique, safeCondition));
         dirty = true;
         flush();
     }
@@ -81,6 +115,7 @@ public final class ServerLearningStore {
         String encoded = encoded(serverId);
         profiles.keySet().removeIf(key -> key.startsWith(encoded + "|"));
         removePrefix("profile." + encoded + ".");
+        removePrefix("condition." + encoded + ".");
         dirty = true;
         flush();
     }
@@ -90,56 +125,46 @@ public final class ServerLearningStore {
         if (!dirty) return;
 
         for (Map.Entry<String, LearningProfile> entry : profiles.entrySet()) {
-            String[] parts = entry.getKey().split("\\|", 2);
-            if (parts.length != 2) continue;
-            String prefix = "profile." + parts[0] + "." + parts[1] + ".";
-            LearningProfile profile = entry.getValue();
-            persisted.setProperty(prefix + "samples", Long.toString(profile.samples()));
-            persisted.setProperty(prefix + "successes", Long.toString(profile.successes()));
-            persisted.setProperty(prefix + "failures", Long.toString(profile.failures()));
-            persisted.setProperty(prefix + "recovered", Long.toString(profile.recoveredSuccesses()));
-            persisted.setProperty(prefix + "ackEma", Double.toString(profile.ackEma()));
-            persisted.setProperty(prefix + "cycleAdjustment", Double.toString(profile.cycleAdjustment()));
-            persisted.setProperty(prefix + "leadAdjustment", Double.toString(profile.leadAdjustment()));
-            persisted.setProperty(prefix + "rotationAdjustment", Double.toString(profile.rotationAdjustment()));
-            persisted.setProperty(prefix + "cadenceAdjustment", Double.toString(profile.cadenceAdjustment()));
-            persisted.setProperty(prefix + "cycles", Long.toString(profile.cycles()));
-            persisted.setProperty(prefix + "successfulCycles", Long.toString(profile.successfulCycles()));
-            persisted.setProperty(prefix + "rollbacks", Long.toString(profile.rollbacks()));
-            persisted.setProperty(prefix + "cycleQualityEma", Double.toString(profile.cycleQualityEma()));
-            persisted.setProperty(prefix + "bestCycleQuality", Double.toString(profile.bestCycleQuality()));
-            persisted.setProperty(prefix + "checkpointCycle", Long.toString(readCheckpoint(profile, "cycle")));
-            persisted.setProperty(prefix + "checkpointQuality", Double.toString(readCheckpointDouble(profile, "quality")));
-            persisted.setProperty(prefix + "checkpointCycleAdjustment", Double.toString(readCheckpointDouble(profile, "cycleAdjustment")));
-            persisted.setProperty(prefix + "checkpointLeadAdjustment", Double.toString(readCheckpointDouble(profile, "leadAdjustment")));
-            persisted.setProperty(prefix + "checkpointRotationAdjustment", Double.toString(readCheckpointDouble(profile, "rotationAdjustment")));
-            persisted.setProperty(prefix + "checkpointCadenceAdjustment", Double.toString(readCheckpointDouble(profile, "cadenceAdjustment")));
+            String[] parts = entry.getKey().split("\\|");
+            if (parts.length == 2) {
+                writeProfile("profile." + parts[0] + "." + parts[1] + ".", entry.getValue());
+            } else if (parts.length == 3) {
+                writeProfile("condition." + parts[0] + "." + parts[1] + "." + parts[2] + ".", entry.getValue());
+            }
         }
 
         Path file = file();
         try {
             Files.createDirectories(file.getParent());
             try (OutputStream output = Files.newOutputStream(file)) {
-                persisted.store(output, "QuickBridge server learning 0.5.0");
+                persisted.store(output, "QuickBridge server learning 0.6.0");
             }
             dirty = false;
         } catch (IOException ignored) {
         }
     }
 
-    private static long readCheckpoint(LearningProfile profile, String field) {
-        return profile.checkpointCycle();
-    }
-
-    private static double readCheckpointDouble(LearningProfile profile, String field) {
-        return switch (field) {
-            case "quality" -> profile.checkpointQuality();
-            case "cycleAdjustment" -> profile.checkpointCycleAdjustment();
-            case "leadAdjustment" -> profile.checkpointLeadAdjustment();
-            case "rotationAdjustment" -> profile.checkpointRotationAdjustment();
-            case "cadenceAdjustment" -> profile.checkpointCadenceAdjustment();
-            default -> 0.0D;
-        };
+    private void writeProfile(String prefix, LearningProfile profile) {
+        persisted.setProperty(prefix + "samples", Long.toString(profile.samples()));
+        persisted.setProperty(prefix + "successes", Long.toString(profile.successes()));
+        persisted.setProperty(prefix + "failures", Long.toString(profile.failures()));
+        persisted.setProperty(prefix + "recovered", Long.toString(profile.recoveredSuccesses()));
+        persisted.setProperty(prefix + "ackEma", Double.toString(profile.ackEma()));
+        persisted.setProperty(prefix + "cycleAdjustment", Double.toString(profile.cycleAdjustment()));
+        persisted.setProperty(prefix + "leadAdjustment", Double.toString(profile.leadAdjustment()));
+        persisted.setProperty(prefix + "rotationAdjustment", Double.toString(profile.rotationAdjustment()));
+        persisted.setProperty(prefix + "cadenceAdjustment", Double.toString(profile.cadenceAdjustment()));
+        persisted.setProperty(prefix + "cycles", Long.toString(profile.cycles()));
+        persisted.setProperty(prefix + "successfulCycles", Long.toString(profile.successfulCycles()));
+        persisted.setProperty(prefix + "rollbacks", Long.toString(profile.rollbacks()));
+        persisted.setProperty(prefix + "cycleQualityEma", Double.toString(profile.cycleQualityEma()));
+        persisted.setProperty(prefix + "bestCycleQuality", Double.toString(profile.bestCycleQuality()));
+        persisted.setProperty(prefix + "checkpointCycle", Long.toString(profile.checkpointCycle()));
+        persisted.setProperty(prefix + "checkpointQuality", Double.toString(profile.checkpointQuality()));
+        persisted.setProperty(prefix + "checkpointCycleAdjustment", Double.toString(profile.checkpointCycleAdjustment()));
+        persisted.setProperty(prefix + "checkpointLeadAdjustment", Double.toString(profile.checkpointLeadAdjustment()));
+        persisted.setProperty(prefix + "checkpointRotationAdjustment", Double.toString(profile.checkpointRotationAdjustment()));
+        persisted.setProperty(prefix + "checkpointCadenceAdjustment", Double.toString(profile.checkpointCadenceAdjustment()));
     }
 
     private void ensureLoaded() {
@@ -165,12 +190,28 @@ public final class ServerLearningStore {
         return Minecraft.getInstance().gameDirectory.toPath().resolve("config").resolve("quickbridge-learning.properties");
     }
 
-    private static String propertyPrefix(String serverId, BridgeTechnique technique) {
+    private static String globalPrefix(String serverId, BridgeTechnique technique) {
         return "profile." + encoded(serverId) + "." + technique.name() + ".";
     }
 
-    private static String profileKey(String serverId, BridgeTechnique technique) {
+    private static String conditionPrefix(
+        String serverId,
+        BridgeTechnique technique,
+        NetworkCondition condition
+    ) {
+        return "condition." + encoded(serverId) + "." + technique.name() + "." + condition.name() + ".";
+    }
+
+    private static String globalKey(String serverId, BridgeTechnique technique) {
         return encoded(serverId) + "|" + technique.name();
+    }
+
+    private static String conditionKey(
+        String serverId,
+        BridgeTechnique technique,
+        NetworkCondition condition
+    ) {
+        return encoded(serverId) + "|" + technique.name() + "|" + condition.name();
     }
 
     private static String encoded(String serverId) {

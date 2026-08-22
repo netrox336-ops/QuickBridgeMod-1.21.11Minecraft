@@ -20,7 +20,7 @@ public final class LearningStatsScreen extends Screen {
     protected void init() {
         BridgeConfig config = BridgeConfig.get();
         int center = width / 2;
-        int top = Math.max(34, height / 2 - 108);
+        int top = Math.max(28, height / 2 - 116);
 
         addRenderableWidget(Button.builder(
             Component.literal("Техника: " + config.technique().displayName()),
@@ -31,25 +31,28 @@ public final class LearningStatsScreen extends Screen {
         ).bounds(center - 154, top, 308, 20).build());
 
         addRenderableWidget(Button.builder(
-            Component.literal("Автообучение: " + state(config.autoLearning())),
+            Component.literal("Network Profiles: " + state(config.networkProfiles())),
             button -> {
-                config.toggleAutoLearning();
-                button.setMessage(Component.literal("Автообучение: " + state(config.autoLearning())));
+                config.toggleNetworkProfiles();
+                button.setMessage(Component.literal("Network Profiles: " + state(config.networkProfiles())));
             }
         ).bounds(center - 154, top + 28, 150, 20).build());
 
         addRenderableWidget(Button.builder(
-            Component.literal("Тренировка: " + state(config.trainingMode())),
+            Component.literal("Network Guard: " + state(config.networkGuard())),
             button -> {
-                config.toggleTrainingMode();
-                button.setMessage(Component.literal("Тренировка: " + state(config.trainingMode())));
+                config.toggleNetworkGuard();
+                button.setMessage(Component.literal("Network Guard: " + state(config.networkGuard())));
             }
         ).bounds(center + 4, top + 28, 150, 20).build());
 
         addRenderableWidget(Button.builder(
-            Component.literal("Сбросить тренировку"),
-            button -> TrainingSession.reset()
-        ).bounds(center - 154, top + 142, 150, 20).build());
+            Component.literal("Сбросить active profile"),
+            button -> {
+                LearningEngine.resetCondition(serverId(), config.technique(), activeCondition(config));
+                minecraft.setScreen(new LearningStatsScreen(parent));
+            }
+        ).bounds(center - 154, top + 166, 150, 20).build());
 
         addRenderableWidget(Button.builder(
             Component.literal("Сбросить технику"),
@@ -57,70 +60,86 @@ public final class LearningStatsScreen extends Screen {
                 LearningEngine.reset(serverId(), config.technique());
                 minecraft.setScreen(new LearningStatsScreen(parent));
             }
-        ).bounds(center + 4, top + 142, 150, 20).build());
+        ).bounds(center + 4, top + 166, 150, 20).build());
 
         addRenderableWidget(Button.builder(
-            Component.literal("Сбросить сервер"),
-            button -> {
-                LearningEngine.resetServer(serverId());
-                minecraft.setScreen(new LearningStatsScreen(parent));
-            }
-        ).bounds(center - 154, top + 168, 150, 20).build());
+            Component.literal("Сбросить тренировку"),
+            button -> TrainingSession.reset()
+        ).bounds(center - 154, top + 192, 150, 20).build());
 
         addRenderableWidget(Button.builder(Component.literal("Готово"), button -> onClose())
-            .bounds(center + 4, top + 168, 150, 20).build());
+            .bounds(center + 4, top + 192, 150, 20).build());
     }
 
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
         renderBackground(graphics, mouseX, mouseY, partialTick);
         BridgeConfig config = BridgeConfig.get();
-        LearningProfile profile = LearningEngine.profile(serverId(), config.technique());
-        TechniqueTuning manual = config.tuning(config.technique());
-        TechniqueTuning effective = config.autoLearning() ? profile.applyTo(manual) : manual;
-        NetworkCondition condition = LearningEngine.networkCondition(serverId(), config.technique(), config.confirmationTicks());
+        String server = serverId();
+        NetworkCondition active = activeCondition(config);
+        LearningProfile global = LearningEngine.profile(server, config.technique());
+        LearningProfile bucket = LearningEngine.conditionProfile(server, config.technique(), active);
+        TechniqueTuning effective = LearningEngine.effectiveTuning(
+            config, server, config.technique(), active, active, 1.0D);
         int center = width / 2;
-        int top = Math.max(34, height / 2 - 108);
+        int top = Math.max(28, height / 2 - 116);
 
-        graphics.drawCenteredString(font, title, center, 8, 0xFFFFFF);
+        graphics.drawCenteredString(font, title, center, 7, 0xFFFFFF);
         graphics.drawCenteredString(font,
             Component.literal("Сервер: " + ServerContext.shortLabel(ServerContext.label(Minecraft.getInstance()))),
-            center, 20, 0xA0A0A0);
+            center, 19, 0xA0A0A0);
 
-        String placementStats = String.format(Locale.ROOT,
-            "Placements %d • Reliability %.1f%% • ACK %.2ft • Confidence %.0f%%",
-            profile.samples(), profile.reliability() * 100.0D, profile.ackEma(), profile.confidence() * 100.0D);
-        graphics.drawCenteredString(font, Component.literal(placementStats), center, top + 58, 0xE6E6E6);
+        String globalStats = String.format(Locale.ROOT,
+            "GLOBAL: %d samples • %.1f%% rel • %d cycles • Q %.1f%% • Conf %.0f%%",
+            global.samples(), global.reliability() * 100.0D, global.cycles(),
+            global.cycleQualityEma() * 100.0D, global.confidence() * 100.0D);
+        graphics.drawCenteredString(font, Component.literal(globalStats), center, top + 58, 0xE6E6E6);
 
-        String cycleStats = String.format(Locale.ROOT,
-            "Cycles %d • Success %.1f%% • Quality %.1f%% • Best %.1f%%",
-            profile.cycles(), profile.cycleSuccessRate() * 100.0D,
-            profile.cycleQualityEma() * 100.0D, profile.bestCycleQuality() * 100.0D);
-        graphics.drawCenteredString(font, Component.literal(cycleStats), center, top + 74, 0xFFFFD28A);
+        String bucketStats = String.format(Locale.ROOT,
+            "%s: %d samples • %.1f%% rel • %d cycles • Q %.1f%% • Conf %.0f%%",
+            active.displayName(), bucket.samples(), bucket.reliability() * 100.0D, bucket.cycles(),
+            bucket.cycleQualityEma() * 100.0D, bucket.confidence() * 100.0D);
+        graphics.drawCenteredString(font, Component.literal(bucketStats), center, top + 74, 0xB9C7FF);
 
-        String network = "Network: " + condition.displayName() + " • Rollbacks: " + profile.rollbacks()
-            + " • Checkpoint cycle: " + profile.checkpointCycle();
-        graphics.drawCenteredString(font, Component.literal(network), center, top + 90, 0x9FD7FF);
+        String selector = BridgeEngine.active()
+            ? "Selector: " + BridgeEngine.activeNetworkCondition().displayName()
+                + " • candidate " + BridgeEngine.candidateNetworkCondition().displayName()
+                + " x" + BridgeEngine.networkCandidateCycles()
+                + " • switches " + BridgeEngine.networkSwitches()
+                + (BridgeEngine.networkTransitioning()
+                    ? String.format(Locale.ROOT, " • blend %.0f%%", BridgeEngine.networkBlend() * 100.0D)
+                    : "")
+            : "Selector: будет определён при следующем запуске техники";
+        graphics.drawCenteredString(font, Component.literal(selector), center, top + 90, 0x9FD7FF);
 
-        String learned = String.format(Locale.ROOT,
-            "Learned: cycle %+.3f • lead %+.3f • rot %+.3f • cad %+.3f",
-            profile.cycleAdjustment(), profile.leadAdjustment(),
-            profile.rotationAdjustment(), profile.cadenceAdjustment());
-        graphics.drawCenteredString(font, Component.literal(learned), center, top + 106, 0xB8E6B8);
+        String corrections = String.format(Locale.ROOT,
+            "Bucket correction: cycle %+.3f • lead %+.3f • rot %+.3f • cad %+.3f",
+            bucket.cycleAdjustment(), bucket.leadAdjustment(),
+            bucket.rotationAdjustment(), bucket.cadenceAdjustment());
+        graphics.drawCenteredString(font, Component.literal(corrections), center, top + 106, 0xB8E6B8);
 
         String effectiveText = String.format(Locale.ROOT,
             "Effective: cycle %.2f • lead %+.2f • rot %.2f • cad %+.2f",
             effective.cycleScale(), effective.leadOffset(), effective.rotationScale(), effective.cadenceBias());
         graphics.drawCenteredString(font, Component.literal(effectiveText), center, top + 122, 0xBBBBBB);
 
+        String guard = "Profiles " + state(config.networkProfiles()) + " • Guard " + state(config.networkGuard())
+            + " • Global RB " + global.rollbacks() + " • Bucket RB " + bucket.rollbacks();
+        graphics.drawCenteredString(font, Component.literal(guard), center, top + 138, 0xFFFFD28A);
+
         if (config.trainingMode()) {
             String training = String.format(Locale.ROOT,
-                "TRAINING: %d cycles • %.1f%% success • quality %.1f%% • %s",
+                "TRAINING: %d cycles • %.1f%% success • Q %.1f%% • %s",
                 TrainingSession.cycles(), TrainingSession.successRate() * 100.0D,
                 TrainingSession.qualityEma() * 100.0D, TrainingSession.lastCondition().displayName());
-            graphics.drawCenteredString(font, Component.literal(training), center, top + 134, 0xFFFFD166);
+            graphics.drawCenteredString(font, Component.literal(training), center, top + 152, 0xFFFFD166);
         }
         super.render(graphics, mouseX, mouseY, partialTick);
+    }
+
+    private NetworkCondition activeCondition(BridgeConfig config) {
+        if (BridgeEngine.active()) return BridgeEngine.activeNetworkCondition();
+        return LearningEngine.networkCondition(serverId(), config.technique(), config.confirmationTicks());
     }
 
     private String serverId() {
