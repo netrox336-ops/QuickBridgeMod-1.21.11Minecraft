@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.6.0 — 2026-08-22
+
+Шестая версия QuickBridge разделяет обучение по состоянию соединения и добавляет плавное переключение runtime-профилей.
+
+### Добавлено
+- condition-aware learning buckets для `STABLE / DELAYED / UNSTABLE`;
+- двухслойная модель `server baseline + network condition profile`;
+- `NetworkProfileSelector` с hysteresis и защитой от переключения после единичного плохого цикла;
+- более быстрое переключение при ухудшении сети и более осторожный возврат к стабильному профилю;
+- плавный blend параметров старого и нового condition-профиля;
+- отдельный `Network Guard` с консервативными runtime-поправками при DELAYED/UNSTABLE;
+- независимые condition samples / cycles / confidence / checkpoints / rollback;
+- сброс только активного network-profile без удаления общего server baseline;
+- HUD-диагностика active/candidate profile, transition blend и switch counter.
+
+### Изменено
+- learning-файл v0.5 полностью сохраняет обратную совместимость и используется как global baseline;
+- placement feedback теперь обучает как общий профиль, так и активный condition bucket;
+- законченный cycle обучает общий профиль и bucket фактически наблюдаемого Network Condition;
+- экран статистики разделяет GLOBAL и активный network bucket;
+- Network Profiles и Network Guard можно отключать независимо от Auto Learning.
+
 ## 0.5.0 — 2026-08-22
 
 Пятая версия QuickBridge переводит обучение с оценки отдельных placements на оценку целых bridge-циклов и добавляет автоматический откат неудачных learned-параметров.
