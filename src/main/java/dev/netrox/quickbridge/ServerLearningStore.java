@@ -47,7 +47,18 @@ public final class ServerLearningStore {
             parseDouble(persisted.getProperty(prefix + "cycleAdjustment"), 0.0D),
             parseDouble(persisted.getProperty(prefix + "leadAdjustment"), 0.0D),
             parseDouble(persisted.getProperty(prefix + "rotationAdjustment"), 0.0D),
-            parseDouble(persisted.getProperty(prefix + "cadenceAdjustment"), 0.0D)
+            parseDouble(persisted.getProperty(prefix + "cadenceAdjustment"), 0.0D),
+            parseLong(persisted.getProperty(prefix + "cycles"), 0L),
+            parseLong(persisted.getProperty(prefix + "successfulCycles"), 0L),
+            parseLong(persisted.getProperty(prefix + "rollbacks"), 0L),
+            parseDouble(persisted.getProperty(prefix + "cycleQualityEma"), 0.0D),
+            parseDouble(persisted.getProperty(prefix + "bestCycleQuality"), 0.0D),
+            parseLong(persisted.getProperty(prefix + "checkpointCycle"), 0L),
+            parseDouble(persisted.getProperty(prefix + "checkpointQuality"), 0.0D),
+            parseDouble(persisted.getProperty(prefix + "checkpointCycleAdjustment"), 0.0D),
+            parseDouble(persisted.getProperty(prefix + "checkpointLeadAdjustment"), 0.0D),
+            parseDouble(persisted.getProperty(prefix + "checkpointRotationAdjustment"), 0.0D),
+            parseDouble(persisted.getProperty(prefix + "checkpointCadenceAdjustment"), 0.0D)
         );
         profiles.put(mapKey, profile);
         return profile;
@@ -92,17 +103,43 @@ public final class ServerLearningStore {
             persisted.setProperty(prefix + "leadAdjustment", Double.toString(profile.leadAdjustment()));
             persisted.setProperty(prefix + "rotationAdjustment", Double.toString(profile.rotationAdjustment()));
             persisted.setProperty(prefix + "cadenceAdjustment", Double.toString(profile.cadenceAdjustment()));
+            persisted.setProperty(prefix + "cycles", Long.toString(profile.cycles()));
+            persisted.setProperty(prefix + "successfulCycles", Long.toString(profile.successfulCycles()));
+            persisted.setProperty(prefix + "rollbacks", Long.toString(profile.rollbacks()));
+            persisted.setProperty(prefix + "cycleQualityEma", Double.toString(profile.cycleQualityEma()));
+            persisted.setProperty(prefix + "bestCycleQuality", Double.toString(profile.bestCycleQuality()));
+            persisted.setProperty(prefix + "checkpointCycle", Long.toString(readCheckpoint(profile, "cycle")));
+            persisted.setProperty(prefix + "checkpointQuality", Double.toString(readCheckpointDouble(profile, "quality")));
+            persisted.setProperty(prefix + "checkpointCycleAdjustment", Double.toString(readCheckpointDouble(profile, "cycleAdjustment")));
+            persisted.setProperty(prefix + "checkpointLeadAdjustment", Double.toString(readCheckpointDouble(profile, "leadAdjustment")));
+            persisted.setProperty(prefix + "checkpointRotationAdjustment", Double.toString(readCheckpointDouble(profile, "rotationAdjustment")));
+            persisted.setProperty(prefix + "checkpointCadenceAdjustment", Double.toString(readCheckpointDouble(profile, "cadenceAdjustment")));
         }
 
         Path file = file();
         try {
             Files.createDirectories(file.getParent());
             try (OutputStream output = Files.newOutputStream(file)) {
-                persisted.store(output, "QuickBridge server learning 0.4.0");
+                persisted.store(output, "QuickBridge server learning 0.5.0");
             }
             dirty = false;
         } catch (IOException ignored) {
         }
+    }
+
+    private static long readCheckpoint(LearningProfile profile, String field) {
+        return profile.checkpointCycle();
+    }
+
+    private static double readCheckpointDouble(LearningProfile profile, String field) {
+        return switch (field) {
+            case "quality" -> profile.checkpointQuality();
+            case "cycleAdjustment" -> profile.checkpointCycleAdjustment();
+            case "leadAdjustment" -> profile.checkpointLeadAdjustment();
+            case "rotationAdjustment" -> profile.checkpointRotationAdjustment();
+            case "cadenceAdjustment" -> profile.checkpointCadenceAdjustment();
+            default -> 0.0D;
+        };
     }
 
     private void ensureLoaded() {
