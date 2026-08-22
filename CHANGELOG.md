@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.7.0 — 2026-08-22
+
+Седьмая версия QuickBridge добавляет отдельный execution-слой для контроля реального исполнения сложных техник.
+
+### Добавлено
+- `TechniqueExecutionProfile` с отдельными phase boundaries для сложных техник;
+- индивидуальные placement windows, min burst speed и yaw/pitch tolerance;
+- `Execution Guard`, который проверяет фазу, движение и rotation alignment перед placement;
+- adaptive placement window по горизонтальной скорости, ACK и reliability;
+- `ExecutionDiagnostics` с motion score, rotation errors, blocked placements и phase-resync counter;
+- Rotation Engine feedback по фактической ошибке yaw/pitch;
+- safe re-entry progress после recovery;
+- phase resync после `RECOVERY RESUME`;
+- отображение execution profile в редакторе техники;
+- расширенная execution-диагностика HUD.
+
+### Изменено
+- Telly / Speed Telly / Blink / Andromeda больше не используют BURST как единственное условие постановки;
+- JUMP/TURN progression может слегка замедляться, если физическое состояние игрока ещё не соответствует следующей фазе;
+- поздняя часть placement window автоматически сокращается при низкой reliability;
+- placement accumulator ограничивается во время заблокированной попытки, чтобы после открытия окна не выпускать накопленную очередь;
+- recovery теперь возвращает сложную технику в синхронизированную точку цикла вместо продолжения старого progress;
+- Execution Guard можно отключить отдельно от Network Guard и Auto Learning.
+
 ## 0.6.0 — 2026-08-22
 
 Шестая версия QuickBridge разделяет обучение по состоянию соединения и добавляет плавное переключение runtime-профилей.
