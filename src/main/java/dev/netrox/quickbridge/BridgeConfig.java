@@ -26,6 +26,8 @@ public final class BridgeConfig {
     private boolean networkProfiles = true;
     private boolean networkGuard = true;
     private boolean executionGuard = true;
+    private boolean smartPlacement = true;
+    private boolean pathGuard = true;
     private boolean autoSelectBlocks = true;
     private boolean stopOnFall = true;
     private boolean stopOnGui = true;
@@ -40,9 +42,7 @@ public final class BridgeConfig {
     private int hudY = 6;
 
     private BridgeConfig() {
-        for (BridgeTechnique value : BridgeTechnique.values()) {
-            tuning.put(value, TechniqueTuning.defaults());
-        }
+        for (BridgeTechnique value : BridgeTechnique.values()) tuning.put(value, TechniqueTuning.defaults());
     }
 
     public static BridgeConfig get() {
@@ -71,6 +71,8 @@ public final class BridgeConfig {
             networkProfiles = Boolean.parseBoolean(p.getProperty("networkProfiles", "true"));
             networkGuard = Boolean.parseBoolean(p.getProperty("networkGuard", "true"));
             executionGuard = Boolean.parseBoolean(p.getProperty("executionGuard", "true"));
+            smartPlacement = Boolean.parseBoolean(p.getProperty("smartPlacement", "true"));
+            pathGuard = Boolean.parseBoolean(p.getProperty("pathGuard", "true"));
             autoSelectBlocks = Boolean.parseBoolean(p.getProperty("autoSelectBlocks", "true"));
             stopOnFall = Boolean.parseBoolean(p.getProperty("stopOnFall", "true"));
             stopOnGui = Boolean.parseBoolean(p.getProperty("stopOnGui", "true"));
@@ -109,6 +111,8 @@ public final class BridgeConfig {
         p.setProperty("networkProfiles", Boolean.toString(networkProfiles));
         p.setProperty("networkGuard", Boolean.toString(networkGuard));
         p.setProperty("executionGuard", Boolean.toString(executionGuard));
+        p.setProperty("smartPlacement", Boolean.toString(smartPlacement));
+        p.setProperty("pathGuard", Boolean.toString(pathGuard));
         p.setProperty("autoSelectBlocks", Boolean.toString(autoSelectBlocks));
         p.setProperty("stopOnFall", Boolean.toString(stopOnFall));
         p.setProperty("stopOnGui", Boolean.toString(stopOnGui));
@@ -135,7 +139,7 @@ public final class BridgeConfig {
         try {
             Files.createDirectories(file.getParent());
             try (OutputStream output = Files.newOutputStream(file)) {
-                p.store(output, "QuickBridge 0.7.0");
+                p.store(output, "QuickBridge 0.8.0");
             }
         } catch (IOException ignored) {}
     }
@@ -184,6 +188,10 @@ public final class BridgeConfig {
     public void toggleNetworkGuard() { networkGuard = !networkGuard; save(); }
     public boolean executionGuard() { return executionGuard; }
     public void toggleExecutionGuard() { executionGuard = !executionGuard; save(); }
+    public boolean smartPlacement() { return smartPlacement; }
+    public void toggleSmartPlacement() { smartPlacement = !smartPlacement; save(); }
+    public boolean pathGuard() { return pathGuard; }
+    public void togglePathGuard() { pathGuard = !pathGuard; save(); }
     public boolean autoSelectBlocks() { return autoSelectBlocks; }
     public void toggleAutoSelectBlocks() { autoSelectBlocks = !autoSelectBlocks; save(); }
     public boolean stopOnFall() { return stopOnFall; }
