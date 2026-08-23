@@ -99,6 +99,7 @@ public final class BridgeEngine {
         STATE_MACHINE.reset();
         RECOVERY.clear();
         CYCLE_EVALUATOR.reset(0, 0, 0);
+        BridgePathDiagnostics.reset();
         lastCycle = BridgeCycleResult.of(0, 0, 0, 0.0D, 5, 1.0D);
         originalSlot = player.getInventory().getSelectedSlot();
         startYaw = player.getYRot();
@@ -208,6 +209,16 @@ public final class BridgeEngine {
 
         double[] move = movementVector(technique.movementStyle(), startYaw, state.strafeSign());
         RotationEngine.tick(player, technique, tuning, state, startYaw, startPitch);
+
+        PathProbe.Snapshot path = PathProbe.inspect(minecraft, player, move[0], move[1]);
+        BridgePathDiagnostics.reportProbe(path);
+        if (config.pathGuard() && path.obstacleAhead()) {
+            releaseMovement(minecraft);
+            if (config.sneakAssist()) minecraft.options.keyShift.setDown(true);
+            phase = "PATH BLOCKED";
+            return;
+        }
+
         applyWorldMovement(minecraft, player, technique, move);
 
         EdgeDetector.EdgeState edge = EdgeDetector.inspect(
@@ -234,7 +245,15 @@ public final class BridgeEngine {
         if (state.placeNow()) {
             int attempts = 1 + technique.extraPlacementAttempts();
             for (int i = 0; i < attempts; i++) {
-                PlacementHelper.PlacementAttempt attempt = placeNext(minecraft, technique, tuning, state, move, i);
+                PlacementHelper.PlacementAttempt attempt = placeNext(
+                    minecraft,
+                    config,
+                    technique,
+                    tuning,
+                    state,
+                    move,
+                    i
+                );
                 if (attempt == null) continue;
                 placementAttempts++;
                 trackPending(attempt.target());
@@ -352,6 +371,7 @@ public final class BridgeEngine {
 
     private static PlacementHelper.PlacementAttempt placeNext(
         Minecraft minecraft,
+        BridgeConfig config,
         BridgeTechnique technique,
         TechniqueTuning tuning,
         TechniqueStateMachine.Snapshot state,
@@ -361,24 +381,51 @@ public final class BridgeEngine {
         LocalPlayer player = minecraft.player;
         if (player == null) return null;
 
+        if (config.smartPlacement()) {
+            PlacementPlanner.Plan plan = PlacementPlanner.plan(
+                minecraft,
+                player,
+                technique,
+                tuning,
+                state,
+                move,
+                extraIndex
+            );
+            BridgePathDiagnostics.reportPlan(plan.scanned(), plan.viable());
+            int rank = 0;
+            for (PlacementPlanner.Candidate candidate : plan.candidates()) {
+                rank++;
+                if (hasPending(candidate.target())) continue;
+                PlacementHelper.PlacementAttempt attempt = PlacementHelper.tryPlace(minecraft, candidate.target());
+                if (attempt == null) continue;
+                BridgePathDiagnostics.reportChosen(rank, candidate.score(), candidate.target());
+                return attempt;
+            }
+            BridgePathDiagnostics.reportMiss();
+            return null;
+        }
+
         double adaptiveLead = Math.min(0.14D, state.horizontalSpeed() * 0.35D);
         double distance = Math.max(
             0.18D,
             technique.placementLead() + tuning.leadOffset() + adaptiveLead + extraIndex * 0.50D
         );
         int y = (int) Math.floor(player.getY() - 1.0D);
-
         BlockPos[] candidates = new BlockPos[] {
             BlockPos.containing(player.getX() + move[0] * distance, y, player.getZ() + move[1] * distance),
             BlockPos.containing(player.getX() + move[0] * (distance + 0.38D), y, player.getZ() + move[1] * (distance + 0.38D)),
             BlockPos.containing(player.getX(), y, player.getZ())
         };
-
-        for (BlockPos target : candidates) {
+        BridgePathDiagnostics.reportPlan(candidates.length, candidates.length);
+        for (int i = 0; i < candidates.length; i++) {
+            BlockPos target = candidates[i];
             if (hasPending(target)) continue;
             PlacementHelper.PlacementAttempt attempt = PlacementHelper.tryPlace(minecraft, target);
-            if (attempt != null) return attempt;
+            if (attempt == null) continue;
+            BridgePathDiagnostics.reportChosen(i + 1, 0.0D, target);
+            return attempt;
         }
+        BridgePathDiagnostics.reportMiss();
         return null;
     }
 
