@@ -14,6 +14,7 @@ public final class BridgeEngine {
     private static final RecoveryStateMachine RECOVERY = new RecoveryStateMachine();
     private static final CycleEvaluator CYCLE_EVALUATOR = new CycleEvaluator();
     private static final NetworkProfileSelector NETWORK_SELECTOR = new NetworkProfileSelector();
+    private static final RouteStabilityController ROUTE = new RouteStabilityController();
 
     private static boolean active;
     private static boolean lastCycleRollback;
@@ -60,6 +61,13 @@ public final class BridgeEngine {
     public static int networkSwitches() { return NETWORK_SELECTOR.switches(); }
     public static double networkBlend() { return NETWORK_SELECTOR.blend(); }
     public static boolean networkTransitioning() { return NETWORK_SELECTOR.transitioning(); }
+    public static double routeDrift() { return ROUTE.lastSnapshot().drift(); }
+    public static double routeCorrection() { return ROUTE.lastSnapshot().correction(); }
+    public static double routeProgress() { return ROUTE.lastSnapshot().progress(); }
+    public static boolean routeHardDrift() { return ROUTE.lastSnapshot().hardDrift(); }
+    public static double routePlacementDrift() { return ROUTE.lastSnapshot().lastPlacementDrift(); }
+    public static double routePlacementSpread() { return ROUTE.lastSnapshot().placementSpreadEma(); }
+    public static int routeReanchors() { return ROUTE.lastSnapshot().reanchors(); }
 
     public static double averageConfirmationTicks() {
         return confirmationAgeSamples == 0 ? 0.0D : confirmationAgeTotal / (double) confirmationAgeSamples;
@@ -100,10 +108,12 @@ public final class BridgeEngine {
         RECOVERY.clear();
         CYCLE_EVALUATOR.reset(0, 0, 0);
         BridgePathDiagnostics.reset();
+        ROUTE.reset();
         lastCycle = BridgeCycleResult.of(0, 0, 0, 0.0D, 5, 1.0D);
         originalSlot = player.getInventory().getSelectedSlot();
         startYaw = player.getYRot();
         startPitch = player.getXRot();
+        ROUTE.begin(player, BridgeConfig.get().technique(), startYaw);
         currentServerId = ServerContext.id(minecraft);
         currentServerLabel = ServerContext.label(minecraft);
         NetworkCondition initial = LearningEngine.networkCondition(
@@ -207,7 +217,17 @@ public final class BridgeEngine {
 
         evaluateCycle(config, technique, state);
 
-        double[] move = movementVector(technique.movementStyle(), startYaw, state.strafeSign());
+        double[] baseMove = movementVector(technique.movementStyle(), startYaw, state.strafeSign());
+        RouteStabilityController.Snapshot route = ROUTE.tick(
+            player,
+            technique,
+            startYaw,
+            baseMove,
+            config.routeCorrectionMode(),
+            config.routeStability()
+        );
+        double[] move = new double[] {route.moveX(), route.moveZ()};
+
         RotationEngine.tick(player, technique, tuning, state, startYaw, startPitch);
 
         PathProbe.Snapshot path = PathProbe.inspect(minecraft, player, move[0], move[1]);
@@ -230,7 +250,7 @@ public final class BridgeEngine {
         );
         edgeDistance = edge.distance();
 
-        if (config.sneakAssist() && edge.shouldSneak()) {
+        if (config.sneakAssist() && (edge.shouldSneak() || route.hardDrift())) {
             minecraft.options.keyShift.setDown(true);
         }
 
@@ -238,9 +258,13 @@ public final class BridgeEngine {
             minecraft.options.keyJump.setDown(true);
         }
 
-        phase = edge.shouldSneak() && state.phase() == TechniquePhase.CRUISE
-            ? "EDGE"
-            : state.phase().displayName();
+        if (route.hardDrift()) {
+            phase = "ROUTE CORRECT";
+        } else {
+            phase = edge.shouldSneak() && state.phase() == TechniquePhase.CRUISE
+                ? "EDGE"
+                : state.phase().displayName();
+        }
 
         if (state.placeNow()) {
             int attempts = 1 + technique.extraPlacementAttempts();
@@ -252,6 +276,7 @@ public final class BridgeEngine {
                     tuning,
                     state,
                     move,
+                    route,
                     i
                 );
                 if (attempt == null) continue;
@@ -315,6 +340,7 @@ public final class BridgeEngine {
                     recovered,
                     learningEnabled
                 );
+                ROUTE.observeConfirmed(pending.target);
                 RECOVERY.confirmed(pending.target);
                 iterator.remove();
                 continue;
@@ -376,6 +402,7 @@ public final class BridgeEngine {
         TechniqueTuning tuning,
         TechniqueStateMachine.Snapshot state,
         double[] move,
+        RouteStabilityController.Snapshot route,
         int extraIndex
     ) {
         LocalPlayer player = minecraft.player;
@@ -389,7 +416,10 @@ public final class BridgeEngine {
                 tuning,
                 state,
                 move,
-                extraIndex
+                extraIndex,
+                route,
+                config.routeCorrectionMode(),
+                config.routeStability()
             );
             BridgePathDiagnostics.reportPlan(plan.scanned(), plan.viable());
             int rank = 0;
@@ -398,7 +428,12 @@ public final class BridgeEngine {
                 if (hasPending(candidate.target())) continue;
                 PlacementHelper.PlacementAttempt attempt = PlacementHelper.tryPlace(minecraft, candidate.target());
                 if (attempt == null) continue;
-                BridgePathDiagnostics.reportChosen(rank, candidate.score(), candidate.target());
+                BridgePathDiagnostics.reportChosen(
+                    rank,
+                    candidate.score(),
+                    candidate.routeError(),
+                    candidate.target()
+                );
                 return attempt;
             }
             BridgePathDiagnostics.reportMiss();
@@ -422,7 +457,12 @@ public final class BridgeEngine {
             if (hasPending(target)) continue;
             PlacementHelper.PlacementAttempt attempt = PlacementHelper.tryPlace(minecraft, target);
             if (attempt == null) continue;
-            BridgePathDiagnostics.reportChosen(i + 1, 0.0D, target);
+            BridgePathDiagnostics.reportChosen(
+                i + 1,
+                0.0D,
+                route == null ? 0.0D : route.routeError(target),
+                target
+            );
             return attempt;
         }
         BridgePathDiagnostics.reportMiss();
