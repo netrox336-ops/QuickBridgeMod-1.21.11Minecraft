@@ -7,6 +7,7 @@ public final class BridgePathDiagnostics {
     private static int viableCandidates;
     private static int chosenRank = -1;
     private static double chosenScore;
+    private static double chosenRouteError;
     private static BlockPos chosenTarget;
     private static long planMisses;
     private static double firstGapDistance = 2.40D;
@@ -23,6 +24,7 @@ public final class BridgePathDiagnostics {
         viableCandidates = 0;
         chosenRank = -1;
         chosenScore = 0.0D;
+        chosenRouteError = 0.0D;
         chosenTarget = null;
         planMisses = 0L;
         firstGapDistance = 2.40D;
@@ -38,18 +40,21 @@ public final class BridgePathDiagnostics {
         viableCandidates = Math.max(0, viable);
         chosenRank = -1;
         chosenScore = 0.0D;
+        chosenRouteError = 0.0D;
         chosenTarget = null;
     }
 
-    public static void reportChosen(int rank, double score, BlockPos target) {
+    public static void reportChosen(int rank, double score, double routeError, BlockPos target) {
         chosenRank = rank;
         chosenScore = score;
+        chosenRouteError = Math.max(0.0D, routeError);
         chosenTarget = target;
     }
 
     public static void reportMiss() {
         planMisses++;
         chosenRank = -1;
+        chosenRouteError = 0.0D;
         chosenTarget = null;
     }
 
@@ -67,6 +72,7 @@ public final class BridgePathDiagnostics {
     public static int viableCandidates() { return viableCandidates; }
     public static int chosenRank() { return chosenRank; }
     public static double chosenScore() { return chosenScore; }
+    public static double chosenRouteError() { return chosenRouteError; }
     public static BlockPos chosenTarget() { return chosenTarget; }
     public static long planMisses() { return planMisses; }
     public static double firstGapDistance() { return firstGapDistance; }
