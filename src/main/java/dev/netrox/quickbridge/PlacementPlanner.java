@@ -22,7 +22,10 @@ public final class PlacementPlanner {
         TechniqueTuning tuning,
         TechniqueStateMachine.Snapshot state,
         double[] move,
-        int extraIndex
+        int extraIndex,
+        RouteStabilityController.Snapshot route,
+        RouteCorrectionMode routeMode,
+        boolean routeStability
     ) {
         if (minecraft.level == null || player == null || move == null || move.length < 2) {
             return new Plan(List.of(), 0, 0);
@@ -61,7 +64,18 @@ public final class PlacementPlanner {
                 BlockPos target = BlockPos.containing(x, y, z);
                 if (!seen.add(target)) continue;
                 scanned++;
-                Candidate candidate = evaluate(minecraft, player, target, dirX, dirZ, baseDistance, lateralOffset);
+                Candidate candidate = evaluate(
+                    minecraft,
+                    player,
+                    target,
+                    dirX,
+                    dirZ,
+                    baseDistance,
+                    lateralOffset,
+                    route,
+                    routeMode,
+                    routeStability
+                );
                 if (candidate != null) viable.add(candidate);
             }
         }
@@ -69,8 +83,26 @@ public final class PlacementPlanner {
         BlockPos underPlayer = BlockPos.containing(player.getX(), y, player.getZ());
         if (seen.add(underPlayer)) {
             scanned++;
-            Candidate fallback = evaluate(minecraft, player, underPlayer, dirX, dirZ, 0.0D, 0.0D);
-            if (fallback != null) viable.add(new Candidate(fallback.target(), fallback.score() - 0.55D, fallback.attachments()));
+            Candidate fallback = evaluate(
+                minecraft,
+                player,
+                underPlayer,
+                dirX,
+                dirZ,
+                0.0D,
+                0.0D,
+                route,
+                routeMode,
+                routeStability
+            );
+            if (fallback != null) {
+                viable.add(new Candidate(
+                    fallback.target(),
+                    fallback.score() - 0.55D,
+                    fallback.attachments(),
+                    fallback.routeError()
+                ));
+            }
         }
 
         viable.sort(Comparator.comparingDouble(Candidate::score).reversed());
@@ -84,7 +116,10 @@ public final class PlacementPlanner {
         double dirX,
         double dirZ,
         double idealDistance,
-        double lateralOffset
+        double lateralOffset,
+        RouteStabilityController.Snapshot route,
+        RouteCorrectionMode routeMode,
+        boolean routeStability
     ) {
         if (!minecraft.level.getBlockState(target).isAir()) return null;
 
@@ -112,14 +147,19 @@ public final class PlacementPlanner {
         double reachPenalty = Math.max(0.0D, nearestAttach - 7.0D) * 0.035D;
         double supportBonus = Math.min(3, attachments) * 0.34D;
         double forwardBonus = Math.max(0.0D, projected) * 0.08D;
+        double routeError = route == null ? 0.0D : route.routeError(target);
+        double routePenalty = routeStability && routeMode != null
+            ? routeError * routeMode.plannerPenalty()
+            : 0.0D;
         double score = 2.25D + supportBonus + forwardBonus
             - forwardError * 0.72D
             - lateralPenalty * 0.46D
-            - reachPenalty;
-        return new Candidate(target, score, attachments);
+            - reachPenalty
+            - routePenalty;
+        return new Candidate(target, score, attachments, routeError);
     }
 
-    public record Candidate(BlockPos target, double score, int attachments) {}
+    public record Candidate(BlockPos target, double score, int attachments, double routeError) {}
 
     public record Plan(List<Candidate> candidates, int scanned, int viable) {}
 }
