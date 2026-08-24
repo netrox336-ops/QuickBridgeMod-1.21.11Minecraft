@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.9.0 — 2026-08-24
+
+Девятая версия QuickBridge добавляет стабилизацию общей траектории моста и связывает её со Smart Placement Planner.
+
+### Добавлено
+- `RouteStabilityController` с фиксированной центральной осью маршрута;
+- расчёт raw/smoothed lateral drift относительно оси;
+- плавная коррекция мирового movement-вектора без snap-поворота камеры;
+- режимы коррекции `GENTLE / NORMAL / STRONG`;
+- hard-drift состояние `ROUTE CORRECT` с поддержкой Sneak Assist;
+- отдельная центральная ось для alternating-профилей Breezily / Witchly / Moonwalk;
+- учёт подтверждённых сервером блоков и placement spread EMA;
+- автоматический re-anchor после смены техники или большого скачка позиции;
+- lane-aware penalty в Smart Placement Planner;
+- route error выбранного placement-кандидата в planner diagnostics;
+- HUD-метрики drift / correction / spread / route progress / re-anchor;
+- настройка Route Stability и силы коррекции в игровом меню;
+- документация `docs/ROUTE_STABILITY.md`.
+
+### Изменено
+- Planner теперь предпочитает кандидаты ближе к центральной линии моста при включённом Route Stability;
+- Path Probe и Edge Detector получают уже скорректированный world-direction vector;
+- confirmed placement дополнительно обновляет геометрию маршрута;
+- при сильном дрейфе мод корректирует траекторию постепенно вместо резкого изменения направления;
+- старые конфиги v0.8 продолжают работать: Route Stability по умолчанию включён в режиме NORMAL.
+
 ## 0.8.0 — 2026-08-23
 
 Восьмая версия QuickBridge перерабатывает выбор placement target и добавляет прогноз ближайшего участка моста.

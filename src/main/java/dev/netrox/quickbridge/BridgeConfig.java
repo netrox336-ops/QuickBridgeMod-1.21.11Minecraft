@@ -18,6 +18,7 @@ public final class BridgeConfig {
     private boolean loaded;
     private BridgeTechnique technique = BridgeTechnique.NINJA;
     private ControlMode controlMode = ControlMode.HOLD;
+    private RouteCorrectionMode routeCorrectionMode = RouteCorrectionMode.NORMAL;
     private boolean hudEnabled = true;
     private boolean diagnosticHud = true;
     private boolean autoLearning = true;
@@ -28,6 +29,7 @@ public final class BridgeConfig {
     private boolean executionGuard = true;
     private boolean smartPlacement = true;
     private boolean pathGuard = true;
+    private boolean routeStability = true;
     private boolean autoSelectBlocks = true;
     private boolean stopOnFall = true;
     private boolean stopOnGui = true;
@@ -63,6 +65,8 @@ public final class BridgeConfig {
             catch (IllegalArgumentException ignored) {}
             try { controlMode = ControlMode.valueOf(p.getProperty("controlMode", controlMode.name())); }
             catch (IllegalArgumentException ignored) {}
+            try { routeCorrectionMode = RouteCorrectionMode.valueOf(p.getProperty("routeCorrectionMode", routeCorrectionMode.name())); }
+            catch (IllegalArgumentException ignored) {}
             hudEnabled = Boolean.parseBoolean(p.getProperty("hudEnabled", "true"));
             diagnosticHud = Boolean.parseBoolean(p.getProperty("diagnosticHud", "true"));
             autoLearning = Boolean.parseBoolean(p.getProperty("autoLearning", "true"));
@@ -73,6 +77,7 @@ public final class BridgeConfig {
             executionGuard = Boolean.parseBoolean(p.getProperty("executionGuard", "true"));
             smartPlacement = Boolean.parseBoolean(p.getProperty("smartPlacement", "true"));
             pathGuard = Boolean.parseBoolean(p.getProperty("pathGuard", "true"));
+            routeStability = Boolean.parseBoolean(p.getProperty("routeStability", "true"));
             autoSelectBlocks = Boolean.parseBoolean(p.getProperty("autoSelectBlocks", "true"));
             stopOnFall = Boolean.parseBoolean(p.getProperty("stopOnFall", "true"));
             stopOnGui = Boolean.parseBoolean(p.getProperty("stopOnGui", "true"));
@@ -103,6 +108,7 @@ public final class BridgeConfig {
         Properties p = new Properties();
         p.setProperty("technique", technique.name());
         p.setProperty("controlMode", controlMode.name());
+        p.setProperty("routeCorrectionMode", routeCorrectionMode.name());
         p.setProperty("hudEnabled", Boolean.toString(hudEnabled));
         p.setProperty("diagnosticHud", Boolean.toString(diagnosticHud));
         p.setProperty("autoLearning", Boolean.toString(autoLearning));
@@ -113,6 +119,7 @@ public final class BridgeConfig {
         p.setProperty("executionGuard", Boolean.toString(executionGuard));
         p.setProperty("smartPlacement", Boolean.toString(smartPlacement));
         p.setProperty("pathGuard", Boolean.toString(pathGuard));
+        p.setProperty("routeStability", Boolean.toString(routeStability));
         p.setProperty("autoSelectBlocks", Boolean.toString(autoSelectBlocks));
         p.setProperty("stopOnFall", Boolean.toString(stopOnFall));
         p.setProperty("stopOnGui", Boolean.toString(stopOnGui));
@@ -139,7 +146,7 @@ public final class BridgeConfig {
         try {
             Files.createDirectories(file.getParent());
             try (OutputStream output = Files.newOutputStream(file)) {
-                p.store(output, "QuickBridge 0.8.0");
+                p.store(output, "QuickBridge 0.9.0");
             }
         } catch (IOException ignored) {}
     }
@@ -172,6 +179,8 @@ public final class BridgeConfig {
     public void setTechnique(BridgeTechnique technique) { this.technique = technique; save(); }
     public ControlMode controlMode() { return controlMode; }
     public void nextControlMode() { controlMode = controlMode.next(); save(); }
+    public RouteCorrectionMode routeCorrectionMode() { return routeCorrectionMode; }
+    public void nextRouteCorrectionMode() { routeCorrectionMode = routeCorrectionMode.next(); save(); }
     public boolean hudEnabled() { return hudEnabled; }
     public void toggleHud() { hudEnabled = !hudEnabled; save(); }
     public boolean diagnosticHud() { return diagnosticHud; }
@@ -192,6 +201,8 @@ public final class BridgeConfig {
     public void toggleSmartPlacement() { smartPlacement = !smartPlacement; save(); }
     public boolean pathGuard() { return pathGuard; }
     public void togglePathGuard() { pathGuard = !pathGuard; save(); }
+    public boolean routeStability() { return routeStability; }
+    public void toggleRouteStability() { routeStability = !routeStability; save(); }
     public boolean autoSelectBlocks() { return autoSelectBlocks; }
     public void toggleAutoSelectBlocks() { autoSelectBlocks = !autoSelectBlocks; save(); }
     public boolean stopOnFall() { return stopOnFall; }

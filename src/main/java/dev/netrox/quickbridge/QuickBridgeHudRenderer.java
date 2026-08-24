@@ -18,12 +18,12 @@ public final class QuickBridgeHudRenderer {
         BridgeTechnique technique = config.technique();
         boolean diagnostics = config.diagnosticHud();
         boolean learning = diagnostics && config.learningHud();
-        int width = diagnostics ? 342 : Math.max(158, minecraft.font.width(technique.displayName()) + 52);
-        int height = learning ? 154 : diagnostics ? 112 : 45;
+        int width = diagnostics ? 360 : Math.max(158, minecraft.font.width(technique.displayName()) + 52);
+        int height = learning ? 168 : diagnostics ? 126 : 45;
 
         graphics.fill(x, y, x + width, y + height, 0xB0101010);
         graphics.fill(x, y, x + 3, y + height, BridgeEngine.active() ? 0xFF55FF55 : 0xFF777777);
-        graphics.drawString(minecraft.font, "QUICKBRIDGE 0.8", x + 8, y + 6, 0xFFFFFFFF, true);
+        graphics.drawString(minecraft.font, "QUICKBRIDGE 0.9", x + 8, y + 6, 0xFFFFFFFF, true);
         graphics.drawString(minecraft.font,
             technique.displayName() + (technique.experimental() ? " [EXP]" : "") + (config.trainingMode() ? " [TRAIN]" : ""),
             x + 8, y + 18, config.trainingMode() ? 0xFFFFD166 : technique.experimental() ? 0xFFFFAA00 : 0xFFE6E6E6, true);
@@ -57,15 +57,25 @@ public final class QuickBridgeHudRenderer {
                 ExecutionDiagnostics.placementReady() || !config.executionGuard() ? 0xFFB8E6B8 : 0xFFFFB86B, true);
 
             String planner = String.format(Locale.ROOT,
-                "Plan %d/%d • rank %d • score %.2f • misses %d • %s",
+                "Plan %d/%d • rank %d • score %.2f • lane %.2f • miss %d",
                 BridgePathDiagnostics.viableCandidates(),
                 BridgePathDiagnostics.scannedCandidates(),
                 BridgePathDiagnostics.chosenRank(),
                 BridgePathDiagnostics.chosenScore(),
-                BridgePathDiagnostics.planMisses(),
-                config.smartPlacement() ? "SMART" : "LEGACY");
+                BridgePathDiagnostics.chosenRouteError(),
+                BridgePathDiagnostics.planMisses());
             graphics.drawString(minecraft.font, planner, x + 8, y + 82,
                 config.smartPlacement() ? 0xFFB8E6B8 : 0xFF888888, true);
+
+            String route = String.format(Locale.ROOT,
+                "Route drift %+.2f • corr %+.2f • spread %.2f • prog %.1f • %s",
+                BridgeEngine.routeDrift(),
+                BridgeEngine.routeCorrection(),
+                BridgeEngine.routePlacementSpread(),
+                BridgeEngine.routeProgress(),
+                config.routeStability() ? config.routeCorrectionMode().displayName() : "OFF");
+            graphics.drawString(minecraft.font, route, x + 8, y + 96,
+                BridgeEngine.routeHardDrift() && config.routeStability() ? 0xFFFFB86B : 0xFFB8E6B8, true);
 
             String path = String.format(Locale.ROOT,
                 "Path gap %.2f • obstacle %.2f • support %.0f%% • gapLen %.2f • %s",
@@ -74,18 +84,19 @@ public final class QuickBridgeHudRenderer {
                 BridgePathDiagnostics.supportRatio() * 100.0D,
                 BridgePathDiagnostics.longestGapLength(),
                 BridgePathDiagnostics.obstacleAhead() ? "BLOCKED" : "CLEAR");
-            graphics.drawString(minecraft.font, path, x + 8, y + 96,
+            graphics.drawString(minecraft.font, path, x + 8, y + 110,
                 BridgePathDiagnostics.obstacleAhead() && config.pathGuard() ? 0xFFFF8A8A : 0xFFB9C7FF, true);
         }
 
         if (learning) {
             BridgeCycleResult cycle = BridgeEngine.lastCycle();
-            String cycleLine = String.format(Locale.ROOT, "Cycle %.0f%% • observed %s%s • blocked %d • resync %d",
+            String cycleLine = String.format(Locale.ROOT, "Cycle %.0f%% • %s%s • blocked %d • resync %d • anchor %d",
                 cycle.quality() * 100.0D, cycle.networkCondition().displayName(),
                 BridgeEngine.lastCycleRollback() ? " • ROLLBACK" : "",
                 ExecutionDiagnostics.blockedPlacements(),
-                ExecutionDiagnostics.phaseResyncs());
-            graphics.drawString(minecraft.font, cycleLine, x + 8, y + 110, 0xFFFFD28A, true);
+                ExecutionDiagnostics.phaseResyncs(),
+                BridgeEngine.routeReanchors());
+            graphics.drawString(minecraft.font, cycleLine, x + 8, y + 124, 0xFFFFD28A, true);
 
             String profileLine;
             if (BridgeEngine.networkTransitioning()) {
@@ -99,19 +110,19 @@ public final class QuickBridgeHudRenderer {
                     + " • candidate " + BridgeEngine.candidateNetworkCondition().displayName()
                     + " (" + BridgeEngine.networkCandidateCycles() + ") • switches " + BridgeEngine.networkSwitches();
             }
-            graphics.drawString(minecraft.font, profileLine, x + 8, y + 124,
+            graphics.drawString(minecraft.font, profileLine, x + 8, y + 138,
                 config.networkProfiles() ? 0xFFB9C7FF : 0xFF888888, true);
 
             if (config.trainingMode()) {
                 String training = String.format(Locale.ROOT, "Training %d cycles • %.0f%% success • Q %.0f%%",
                     TrainingSession.cycles(), TrainingSession.successRate() * 100.0D, TrainingSession.qualityEma() * 100.0D);
-                graphics.drawString(minecraft.font, training, x + 8, y + 138, 0xFFFFD166, true);
+                graphics.drawString(minecraft.font, training, x + 8, y + 152, 0xFFFFD166, true);
             } else {
                 LearningProfile profile = BridgeEngine.conditionLearningProfile();
                 String learned = String.format(Locale.ROOT, "Bucket %d/%d cycles • Q %.0f%% • Conf %.0f%% • RB %d",
                     profile.successfulCycles(), profile.cycles(), profile.cycleQualityEma() * 100.0D,
                     profile.confidence() * 100.0D, profile.rollbacks());
-                graphics.drawString(minecraft.font, learned, x + 8, y + 138,
+                graphics.drawString(minecraft.font, learned, x + 8, y + 152,
                     config.autoLearning() && config.networkProfiles() ? 0xFFB8E6B8 : 0xFF888888, true);
             }
         }
