@@ -58,7 +58,7 @@ public final class RouteStabilityController {
         confirmedSamples = 0;
         initialized = true;
         lastSnapshot = new Snapshot(
-            dirX, dirZ, originX, originZ,
+            dirX, dirZ, dirX, dirZ, originX, originZ,
             0.0D, 0.0D, 0.0D, 0.0D,
             false, 0.0D, 0.0D, reanchors
         );
@@ -117,6 +117,8 @@ public final class RouteStabilityController {
         lastSnapshot = new Snapshot(
             correctedX,
             correctedZ,
+            dirX,
+            dirZ,
             originX,
             originZ,
             rawDrift,
@@ -174,6 +176,8 @@ public final class RouteStabilityController {
     public record Snapshot(
         double moveX,
         double moveZ,
+        double axisX,
+        double axisZ,
         double originX,
         double originZ,
         double rawDrift,
@@ -189,10 +193,6 @@ public final class RouteStabilityController {
             if (target == null) return 0.0D;
             double dx = target.getX() + 0.5D - originX;
             double dz = target.getZ() + 0.5D - originZ;
-            double length = Math.sqrt(moveX * moveX + moveZ * moveZ);
-            if (length < 0.0001D) return 0.0D;
-            double axisX = moveX / length;
-            double axisZ = moveZ / length;
             double laneX = axisZ;
             double laneZ = -axisX;
             return Math.abs(dx * laneX + dz * laneZ);
@@ -200,7 +200,7 @@ public final class RouteStabilityController {
 
         private static Snapshot idle() {
             return new Snapshot(
-                0.0D, 1.0D, 0.0D, 0.0D,
+                0.0D, 1.0D, 0.0D, 1.0D, 0.0D, 0.0D,
                 0.0D, 0.0D, 0.0D, 0.0D,
                 false, 0.0D, 0.0D, 0
             );
